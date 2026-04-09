@@ -1,0 +1,14 @@
+# Default configuration for lyzr-ai-cfo agent
+# Override per-environment by creating config/<env>.yaml
+
+variance_threshold: 5
+max_records_per_query: 50
+max_actions_per_analysis: 20
+
+# Currency formatting
+currency_format: "$XXK"
+currency_millions: "$X.XM"
+
+# Response limits
+max_response_words: 200
+detailed_response_words: 500

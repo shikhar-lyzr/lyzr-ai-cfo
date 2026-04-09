@@ -1,0 +1,19 @@
+name: lyzr-ai-cfo
+description: Finance Action Engine — proactive variance review and financial analysis
+version: "1.0"
+
+model:
+  preferred: "lyzr:default@https://agent-prod.studio.lyzr.ai/v4"
+
+tools:
+  - search_records
+  - analyze_financial_data
+  - create_action
+  - update_action
+  - generate_commentary
+  - draft_email
+
+settings:
+  replace_builtin_tools: true
+  max_turns: 10
+  temperature: 0.3

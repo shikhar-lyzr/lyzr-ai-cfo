@@ -1,0 +1,11 @@
+name: monthly-close
+description: Full monthly close workflow — analyze all data, generate commentary, prepare action items
+steps:
+  - skill: variance-review
+    prompt: "Run variance analysis across all data sources with 5% threshold"
+  - skill: monthly-close
+    prompt: "Review all pending actions and ensure coverage for every critical and warning variance"
+  - skill: monthly-close
+    prompt: "Generate detailed variance commentary suitable for the monthly finance report"
+  - skill: monthly-close
+    prompt: "Summarize open items requiring team input and offer to draft follow-up emails"

@@ -1,0 +1,15 @@
+entries:
+  - path: variance-thresholds.md
+    always_load: true
+    tags: [variance, thresholds, severity]
+    priority: high
+
+  - path: common-drivers.md
+    always_load: false
+    tags: [variance, drivers, root-cause]
+    priority: medium
+
+  - path: report-formats.md
+    always_load: false
+    tags: [reports, commentary, formatting]
+    priority: medium

@@ -1,0 +1,11 @@
+Account,Period,Actual,Budget,Category
+Marketing,2026-Q1,14200,11500,OpEx
+Engineering,2026-Q1,45000,46000,OpEx
+Sales,2026-Q1,22800,20000,OpEx
+Revenue,2026-Q1,52000,50000,Revenue
+Infrastructure,2026-Q1,8900,9000,OpEx
+Customer Support,2026-Q1,6200,5500,OpEx
+HR,2026-Q1,3800,4000,OpEx
+Legal,2026-Q1,2100,1500,OpEx
+Office,2026-Q1,1800,2000,OpEx
+R&D,2026-Q1,15600,12000,OpEx

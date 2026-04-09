@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx next:*)",
+      "Bash(npx prisma:*)",
+      "Bash(node -e \"const { PrismaClient } = require\\('./lib/generated/prisma'\\); console.log\\(typeof PrismaClient\\);\")",
+      "Bash(node -e \"import\\('@prisma/client'\\).then\\(m => console.log\\(Object.keys\\(m\\).slice\\(0,5\\)\\)\\)\")",
+      "Bash(npm ls:*)",
+      "Bash(npm search:*)",
+      "Bash(npm info:*)",
+      "Bash(node -e \"const m = require\\('@prisma/adapter-libsql'\\); console.log\\(Object.keys\\(m\\)\\);\")",
+      "Bash(npx tsx -e ':*)",
+      "Bash(node -e ':*)",
+      "Bash(rm -rf lib/generated prisma/migrations prisma/dev.db prisma/dev.db-journal prisma/seed.ts prisma/seed.mts prisma.config.ts)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx prisma@5 --version)",
+      "Bash(npx prisma@5 init --datasource-provider sqlite)",
+      "Bash(rm:*)",
+      "Bash(npm test:*)",
+      "Bash(npx vitest:*)",
+      "Bash(node --env-file=.env scripts/verify-agent.mjs)",
+      "Bash(node --env-file=.env scripts/verify-loadagent.mjs)",
+      "Bash(npx tsx:*)"
+    ]
+  }
+}

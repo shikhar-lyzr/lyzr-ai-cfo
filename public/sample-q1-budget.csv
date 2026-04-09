@@ -1,0 +1,22 @@
+Account,Period,Actual,Budget,Category
+Marketing - Digital Ads,2026-Q1,19800,15100,Marketing
+Marketing - Contractors,2026-Q1,12400,10400,Marketing
+Marketing - Events,2026-Q1,8200,8000,Marketing
+Marketing - Other,2026-Q1,4800,5000,Marketing
+Sales - Compensation,2026-Q1,35200,33000,Sales
+Sales - Travel,2026-Q1,12600,11000,Sales
+Sales - Tools,2026-Q1,5800,5500,Sales
+Engineering - Salaries,2026-Q1,185000,185000,Engineering
+Engineering - Cloud Infrastructure,2026-Q1,42000,32700,Engineering
+Engineering - Software Licenses,2026-Q1,14200,12600,Engineering
+Engineering - Contractors,2026-Q1,28000,31000,Engineering
+Customer Support - Staff,2026-Q1,18500,17000,Customer Support
+Customer Support - Tools,2026-Q1,4200,3800,Customer Support
+G&A - Office,2026-Q1,8900,9200,G&A
+G&A - Legal,2026-Q1,15600,8000,G&A
+G&A - Insurance,2026-Q1,4500,4500,G&A
+Revenue - Enterprise,2026-Q1,320000,290000,Revenue
+Revenue - SMB,2026-Q1,145000,155000,Revenue
+Revenue - Services,2026-Q1,42000,40000,Revenue
+R&D - Research,2026-Q1,22000,25000,R&D
+R&D - Prototyping,2026-Q1,8500,7000,R&D

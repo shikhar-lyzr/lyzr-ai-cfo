@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String        @id @default(cuid())
+  lyzrAccountId  String        @unique
+  email          String        @unique
+  name           String
+  credits        Float         @default(0)
+  createdAt      DateTime      @default(now())
+  dataSources    DataSource[]
+  actions        Action[]
+  chatMessages   ChatMessage[]
+}
+
+model DataSource {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  name        String
+  status      String   @default("processing")
+  recordCount Int      @default(0)
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  user    User              @relation(fields: [userId], references: [id])
+  records FinancialRecord[]
+  actions Action[]
+}
+
+model FinancialRecord {
+  id           String @id @default(cuid())
+  dataSourceId String
+  account      String
+  period       String
+  actual       Float
+  budget       Float
+  category     String
+
+  dataSource DataSource @relation(fields: [dataSourceId], references: [id])
+}
+
+model Action {
+  id                 String   @id @default(cuid())
+  userId             String
+  type               String
+  severity           String
+  headline           String
+  detail             String
+  driver             String
+  status             String   @default("pending")
+  sourceDataSourceId String
+  createdAt          DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id])
+  dataSource   DataSource   @relation(fields: [sourceDataSourceId], references: [id])
+  chatMessages ChatMessage[]
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String
+  content   String
+  timestamp DateTime @default(now())
+  actionId  String?
+
+  user   User    @relation(fields: [userId], references: [id])
+  action Action? @relation(fields: [actionId], references: [id])
+}

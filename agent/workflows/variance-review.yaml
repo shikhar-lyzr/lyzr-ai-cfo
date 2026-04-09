@@ -1,0 +1,9 @@
+name: variance-review
+description: End-to-end variance review for uploaded financial data
+steps:
+  - skill: variance-review
+    prompt: "Retrieve all records for the specified data source and run a full variance analysis with the default 5% threshold"
+  - skill: variance-review
+    prompt: "Create action items for every flagged variance. Use correct severity levels: critical >20%, warning 10-20%, info 5-10%"
+  - skill: monthly-close
+    prompt: "Generate a summary commentary of the findings, formatted for the user's review"
