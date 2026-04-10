@@ -108,7 +108,28 @@ async function callGemini(prompt: string): Promise<string | null> {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
 }
 
-function extractJson(text: string): Record<string, unknown> | null {
+/**
+ * Shared LLM call helper — tries Lyzr then Gemini.
+ * Exported for reuse by ar-parser.ts and detect-shape.ts.
+ */
+export async function callLlm(prompt: string): Promise<string | null> {
+  let text: string | null = null;
+  try {
+    text = await callLyzr(prompt);
+  } catch {
+    // ignore
+  }
+  if (!text) {
+    try {
+      text = await callGemini(prompt);
+    } catch {
+      // ignore
+    }
+  }
+  return text;
+}
+
+export function extractJson(text: string): Record<string, unknown> | null {
   // Try to extract JSON from the response — handle markdown fences
   let clean = text.trim();
   const fenceMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -121,6 +142,37 @@ function extractJson(text: string): Record<string, unknown> | null {
     console.error("[csv-mapper] model returned non-JSON:", text.slice(0, 200));
   }
   return null;
+}
+
+/**
+ * LLM-powered CSV shape classification fallback.
+ *
+ * Called by detect-shape.ts when regex fast-path returns "unknown".
+ */
+export async function inferCsvShape(
+  headers: string[]
+): Promise<"variance" | "ar" | "unknown"> {
+  const headerLine = headers.map((h, i) => `${i}: ${h}`).join(", ");
+  const prompt = `You are a CSV classifier for a financial tool. Given these CSV column headers, classify the data shape.
+
+Headers: ${headerLine}
+
+Rules:
+- "variance" = budget vs actual financial comparison (has columns like budget, actual, forecast, plan, spent)
+- "ar" = accounts receivable / invoice aging (has columns like invoice number, due date, customer, amount due)
+- "unknown" = neither pattern matches
+
+Respond with ONLY a JSON object: {"shape": "variance"} or {"shape": "ar"} or {"shape": "unknown"}`;
+
+  const text = await callLlm(prompt);
+  if (!text) return "unknown";
+
+  const obj = extractJson(text);
+  if (!obj) return "unknown";
+
+  const shape = obj.shape;
+  if (shape === "variance" || shape === "ar") return shape;
+  return "unknown";
 }
 
 export async function inferColumnMapping(

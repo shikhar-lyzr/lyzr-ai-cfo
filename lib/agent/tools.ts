@@ -468,6 +468,307 @@ export function createFinancialTools(userId: string) {
     }
   );
 
+  // ── AR Follow-up Tools ──────────────────────────────────────────────
+
+  const scanArAging = tool(
+    "scan_ar_aging",
+    "Scan open invoices and bucket by days overdue. Returns eligible invoices grouped into info (1-14 days), warning (15-44 days), and critical (45+ days). Skips invoices in cooldown (dunned within 14 days) or snoozed.",
+    {
+      type: "object",
+      properties: {
+        dataSourceId: {
+          type: "string",
+          description: "Optional data source ID to limit scan to",
+        },
+      },
+      required: [],
+    },
+    async (args) => {
+      const now = new Date();
+      const cooldownCutoff = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          dataSource: { userId, status: "ready" },
+          status: "open",
+          ...(args.dataSourceId ? { dataSourceId: args.dataSourceId } : {}),
+        },
+        include: { dataSource: { select: { name: true } } },
+      });
+
+      type BucketedInvoice = {
+        id: string;
+        invoiceNumber: string;
+        customer: string;
+        amount: number;
+        daysOverdue: number;
+        dueDate: string;
+        sourceName: string;
+      };
+
+      const info: BucketedInvoice[] = [];
+      const warning: BucketedInvoice[] = [];
+      const critical: BucketedInvoice[] = [];
+      const skipped: string[] = [];
+
+      for (const inv of invoices) {
+        // Skip if in cooldown (dunned within 14 days)
+        if (inv.lastDunnedAt && inv.lastDunnedAt > cooldownCutoff) {
+          skipped.push(`${inv.invoiceNumber}: dunned ${Math.floor((now.getTime() - inv.lastDunnedAt.getTime()) / 86400000)}d ago (cooldown)`);
+          continue;
+        }
+
+        // Skip if snoozed
+        if (inv.snoozedUntil && inv.snoozedUntil > now) {
+          skipped.push(`${inv.invoiceNumber}: snoozed until ${inv.snoozedUntil.toISOString().split("T")[0]}`);
+          continue;
+        }
+
+        const daysOverdue = Math.floor((now.getTime() - inv.dueDate.getTime()) / 86400000);
+        if (daysOverdue < 1) {
+          skipped.push(`${inv.invoiceNumber}: not yet overdue`);
+          continue;
+        }
+
+        const entry: BucketedInvoice = {
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          customer: inv.customer,
+          amount: inv.amount,
+          daysOverdue,
+          dueDate: inv.dueDate.toISOString().split("T")[0],
+          sourceName: inv.dataSource.name,
+        };
+
+        if (daysOverdue >= 45) critical.push(entry);
+        else if (daysOverdue >= 15) warning.push(entry);
+        else info.push(entry);
+      }
+
+      const totalOverdue = [...info, ...warning, ...critical].reduce((s, i) => s + i.amount, 0);
+
+      const lines = [
+        `**AR Aging Scan:** ${info.length + warning.length + critical.length} overdue invoices ($${(totalOverdue / 1000).toFixed(1)}K total)`,
+        critical.length > 0 ? `\n**Critical (45+ days):** ${critical.map((i) => `${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
+        warning.length > 0 ? `\n**Warning (15-44 days):** ${warning.map((i) => `${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
+        info.length > 0 ? `\n**Info (1-14 days):** ${info.map((i) => `${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
+        skipped.length > 0 ? `\n**Skipped:** ${skipped.join("; ")}` : "",
+      ].filter(Boolean).join("");
+
+      return {
+        text: lines,
+        details: { bucketed: { info, warning, critical }, skipped },
+      };
+    }
+  );
+
+  const createArActions = tool(
+    "create_ar_actions",
+    "Create AR follow-up action items in the user's feed. Each action is linked to an invoice. Deduplicates by (invoiceId, status=pending).",
+    {
+      type: "object",
+      properties: {
+        actions: {
+          type: "array",
+          description: "List of AR actions to create",
+          items: {
+            type: "object",
+            properties: {
+              invoiceId: { type: "string" },
+              severity: {
+                type: "string",
+                enum: ["critical", "warning", "info"],
+              },
+              headline: { type: "string" },
+              detail: { type: "string" },
+              driver: { type: "string" },
+              dataSourceId: { type: "string" },
+            },
+            required: ["invoiceId", "severity", "headline", "detail", "driver", "dataSourceId"],
+          },
+        },
+      },
+      required: ["actions"],
+    },
+    async (args) => {
+      type ArToolAction = {
+        invoiceId: string;
+        severity: string;
+        headline: string;
+        detail: string;
+        driver: string;
+        dataSourceId: string;
+      };
+
+      const items = (args.actions as ArToolAction[]) || [];
+      if (items.length === 0) {
+        return { text: "No AR actions provided." };
+      }
+
+      // Dedupe by (invoiceId, status=pending)
+      const invoiceIds = items.map((a) => a.invoiceId);
+      const existing = await prisma.action.findMany({
+        where: {
+          userId,
+          invoiceId: { in: invoiceIds },
+          status: "pending",
+          type: "ar_followup",
+        },
+        select: { invoiceId: true },
+      });
+      const existingInvoiceIds = new Set(existing.map((e) => e.invoiceId));
+
+      const newActions = items.filter((a) => !existingInvoiceIds.has(a.invoiceId));
+      if (newActions.length === 0) {
+        return { text: `All ${items.length} AR actions already exist (deduplicated by invoiceId).` };
+      }
+
+      await prisma.action.createMany({
+        data: newActions.map((a) => ({
+          userId,
+          type: "ar_followup",
+          severity: a.severity,
+          headline: a.headline,
+          detail: a.detail,
+          driver: a.driver,
+          sourceDataSourceId: a.dataSourceId,
+          invoiceId: a.invoiceId,
+        })),
+      });
+
+      return {
+        text: `Created ${newActions.length} AR follow-up actions. (${existingInvoiceIds.size} skipped as duplicates)`,
+        details: { created: newActions.length, skipped: existingInvoiceIds.size },
+      };
+    }
+  );
+
+  const draftDunningEmail = tool(
+    "draft_dunning_email",
+    "Draft a dunning/collection email for an overdue invoice. Tone defaults to the invoice's aging bucket. Writes the draft to the linked action's draftBody field. Does NOT send.",
+    {
+      type: "object",
+      properties: {
+        invoiceId: {
+          type: "string",
+          description: "Invoice ID to draft for",
+        },
+        tone: {
+          type: "string",
+          enum: ["friendly", "firm", "escalation"],
+          description: "Email tone — defaults to bucket-appropriate tone",
+        },
+      },
+      required: ["invoiceId"],
+    },
+    async (args) => {
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: args.invoiceId },
+      });
+
+      if (!invoice) {
+        return { text: `Error: Invoice ${args.invoiceId} not found.` };
+      }
+
+      const tone = args.tone ?? inferToneFromInvoice(invoice.dueDate);
+      const body = buildDunningEmailBody(invoice, tone);
+
+      // Write to the pending action's draftBody
+      const action = await prisma.action.findFirst({
+        where: {
+          userId,
+          invoiceId: args.invoiceId,
+          status: "pending",
+          type: "ar_followup",
+        },
+      });
+
+      if (action) {
+        await prisma.action.update({
+          where: { id: action.id },
+          data: { draftBody: body },
+        });
+      }
+
+      return {
+        text: body,
+        details: { invoiceId: args.invoiceId, tone, actionId: action?.id },
+      };
+    }
+  );
+
+  const updateInvoiceStatus = tool(
+    "update_invoice_status",
+    "Update an invoice's status (sent, snoozed, escalated). Records an ActionEvent on the linked action.",
+    {
+      type: "object",
+      properties: {
+        invoiceId: {
+          type: "string",
+          description: "Invoice ID to update",
+        },
+        status: {
+          type: "string",
+          enum: ["sent", "snoozed", "escalated"],
+          description: "New invoice status",
+        },
+        snoozedUntil: {
+          type: "string",
+          description: "ISO date for snooze expiry (required if status=snoozed)",
+        },
+      },
+      required: ["invoiceId", "status"],
+    },
+    async (args) => {
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: args.invoiceId },
+      });
+
+      if (!invoice) {
+        return { text: `Error: Invoice ${args.invoiceId} not found.` };
+      }
+
+      const updateData: Record<string, unknown> = { status: args.status };
+      if (args.status === "sent") {
+        updateData.lastDunnedAt = new Date();
+      }
+      if (args.status === "snoozed" && args.snoozedUntil) {
+        updateData.snoozedUntil = new Date(args.snoozedUntil);
+      }
+
+      await prisma.invoice.update({
+        where: { id: args.invoiceId },
+        data: updateData,
+      });
+
+      // Record ActionEvent on the linked action
+      const action = await prisma.action.findFirst({
+        where: {
+          userId,
+          invoiceId: args.invoiceId,
+          type: "ar_followup",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (action) {
+        await prisma.actionEvent.create({
+          data: {
+            actionId: action.id,
+            userId,
+            fromStatus: action.status,
+            toStatus: args.status === "sent" ? "approved" : args.status === "snoozed" ? "dismissed" : "flagged",
+          },
+        });
+      }
+
+      return {
+        text: `Invoice ${invoice.invoiceNumber} updated to "${args.status}".`,
+        details: { invoiceId: args.invoiceId, newStatus: args.status },
+      };
+    }
+  );
+
   return [
     searchRecords,
     analyzeFinancialData,
@@ -475,5 +776,78 @@ export function createFinancialTools(userId: string) {
     updateAction,
     generateCommentary,
     draftEmail,
+    scanArAging,
+    createArActions,
+    draftDunningEmail,
+    updateInvoiceStatus,
   ];
+}
+
+// ── Shared helpers (used by both agent tools and API routes) ───────
+
+/** Infer dunning tone from invoice due date. */
+export function inferToneFromInvoice(dueDate: Date): "friendly" | "firm" | "escalation" {
+  const daysOverdue = Math.floor((Date.now() - dueDate.getTime()) / 86400000);
+  if (daysOverdue >= 45) return "escalation";
+  if (daysOverdue >= 15) return "firm";
+  return "friendly";
+}
+
+/** Build dunning email body. Shared by the agent tool and the AR API route. */
+export function buildDunningEmailBody(
+  invoice: { invoiceNumber: string; customer: string; customerEmail?: string | null; amount: number; dueDate: Date },
+  tone: "friendly" | "firm" | "escalation"
+): string {
+  const recipient = invoice.customerEmail || "the customer";
+  const daysOverdue = Math.floor((Date.now() - invoice.dueDate.getTime()) / 86400000);
+  const amountStr = `$${(invoice.amount / 1000).toFixed(1)}K`;
+
+  if (tone === "friendly") {
+    return [
+      `To: ${recipient}`,
+      `Subject: Friendly Reminder — Invoice ${invoice.invoiceNumber}`,
+      "",
+      `Hi ${invoice.customer},`,
+      "",
+      `This is a friendly reminder that invoice ${invoice.invoiceNumber} for ${amountStr} was due on ${invoice.dueDate.toISOString().split("T")[0]} (${daysOverdue} days ago).`,
+      "",
+      `If payment has already been sent, please disregard this note. Otherwise, could you confirm expected payment timing?`,
+      "",
+      `Thank you,`,
+      `Finance Team`,
+    ].join("\n");
+  }
+
+  if (tone === "firm") {
+    return [
+      `To: ${recipient}`,
+      `Subject: Payment Overdue — Invoice ${invoice.invoiceNumber}`,
+      "",
+      `Dear ${invoice.customer},`,
+      "",
+      `Invoice ${invoice.invoiceNumber} for ${amountStr} is now ${daysOverdue} days past due (due date: ${invoice.dueDate.toISOString().split("T")[0]}).`,
+      "",
+      `We kindly request immediate attention to this outstanding balance. Please arrange payment at your earliest convenience or contact us to discuss payment terms.`,
+      "",
+      `Regards,`,
+      `Finance Team`,
+    ].join("\n");
+  }
+
+  // escalation
+  return [
+    `To: ${recipient}`,
+    `Subject: URGENT — Invoice ${invoice.invoiceNumber} Significantly Overdue`,
+    "",
+    `Dear ${invoice.customer},`,
+    "",
+    `Invoice ${invoice.invoiceNumber} for ${amountStr} is now ${daysOverdue} days past due. Despite prior communications, this balance remains outstanding.`,
+    "",
+    `Please treat this as urgent. We require payment or a confirmed payment plan within 5 business days. Continued non-payment may affect your account status and credit terms.`,
+    "",
+    `If there are circumstances we should be aware of, please contact us immediately so we can find a resolution.`,
+    "",
+    `Regards,`,
+    `Finance Team`,
+  ].join("\n");
 }

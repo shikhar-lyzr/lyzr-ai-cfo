@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, AlertCircle, CheckCircle, Flag, MessageSquare, X } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, AlertCircle, CheckCircle, Flag, MessageSquare, X, Copy, Clock, ArrowUpCircle } from "lucide-react";
 import { clsx } from "clsx";
 import type { Action } from "@/lib/types";
 import { relativeTime, severityColor } from "@/lib/utils";
@@ -11,6 +12,7 @@ interface ActionCardProps {
   onApprove?: (id: string) => void;
   onAskAI?: (id: string) => void;
   onDismiss?: (id: string) => void;
+  onArOp?: (id: string, op: "mark_sent" | "snooze" | "escalate") => void;
 }
 
 const severityIcons = {
@@ -25,8 +27,44 @@ const severityLabels = {
   info: "Info",
 };
 
-export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss }: ActionCardProps) {
+export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss, onArOp }: ActionCardProps) {
   const Icon = severityIcons[action.severity] ?? AlertCircle;
+  const isAr = action.type === "ar_followup";
+  const [expanded, setExpanded] = useState(false);
+  const [draftBody, setDraftBody] = useState<string | null>(action.draftBody ?? null);
+  const [loadingDraft, setLoadingDraft] = useState(false);
+
+  const toggleDraft = async () => {
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+
+    // Lazy-load draftBody if not cached
+    if (!draftBody) {
+      setLoadingDraft(true);
+      try {
+        const res = await fetch(`/api/actions/${action.id}/ar`);
+        if (res.ok) {
+          const data = await res.json();
+          setDraftBody(data.draftBody);
+        }
+      } catch {
+        // silent — user can retry
+      } finally {
+        setLoadingDraft(false);
+      }
+    }
+
+    setExpanded(true);
+  };
+
+  const handleCopyAndSend = async () => {
+    if (draftBody) {
+      await navigator.clipboard.writeText(draftBody);
+    }
+    onArOp?.(action.id, "mark_sent");
+  };
 
   return (
     <div className="bg-bg-card rounded-card border border-border shadow-card p-4">
@@ -45,11 +83,17 @@ export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss }: Ac
         </span>
       </div>
 
-      <h3 className="text-sm font-semibold text-text-primary mb-1">
-        {action.headline}
-      </h3>
-      <p className="text-sm text-text-secondary mb-2">{action.detail}</p>
-      <p className="text-xs text-text-secondary mb-3">{action.driver}</p>
+      {/* Clickable body for AR cards */}
+      <div
+        className={isAr && action.status === "pending" ? "cursor-pointer" : ""}
+        onClick={isAr && action.status === "pending" ? toggleDraft : undefined}
+      >
+        <h3 className="text-sm font-semibold text-text-primary mb-1">
+          {action.headline}
+        </h3>
+        <p className="text-sm text-text-secondary mb-2">{action.detail}</p>
+        <p className="text-xs text-text-secondary mb-3">{action.driver}</p>
+      </div>
 
       <p className="text-xs text-text-secondary mb-3">
         Source:{" "}
@@ -58,8 +102,61 @@ export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss }: Ac
         </span>
       </p>
 
+      {/* Expanded draft body for AR cards */}
+      {isAr && expanded && (
+        <div className="mb-3 p-3 rounded-lg bg-bg-secondary border border-border overflow-x-auto">
+          {loadingDraft ? (
+            <p className="text-xs text-text-secondary">Loading draft...</p>
+          ) : draftBody ? (
+            <pre className="text-xs text-text-primary whitespace-pre-wrap font-mono leading-relaxed">
+              {draftBody}
+            </pre>
+          ) : (
+            <p className="text-xs text-text-secondary">Draft unavailable.</p>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 pt-2 border-t border-border">
-        {action.status === "pending" && (
+        {action.status === "pending" && isAr && (
+          <>
+            <button
+              onClick={handleCopyAndSend}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-success/30 text-success hover:bg-success/10 transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Copy & Mark Sent
+            </button>
+            <button
+              onClick={() => onArOp?.(action.id, "snooze")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-border text-text-secondary hover:bg-border/30 transition-colors"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Snooze 7d
+            </button>
+            <button
+              onClick={() => onArOp?.(action.id, "escalate")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-warning/30 text-warning hover:bg-warning/10 transition-colors"
+            >
+              <ArrowUpCircle className="w-3.5 h-3.5" />
+              Escalate
+            </button>
+            <button
+              onClick={() => onAskAI?.(action.id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn bg-accent-primary text-white hover:bg-accent-hover transition-colors"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Ask AI
+            </button>
+            <button
+              onClick={() => onDismiss?.(action.id)}
+              className="ml-auto inline-flex items-center p-1.5 text-text-secondary hover:text-danger rounded-btn hover:bg-danger/10 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </>
+        )}
+        {action.status === "pending" && !isAr && (
           <>
             <button
               onClick={() => onApprove?.(action.id)}
@@ -102,7 +199,7 @@ export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss }: Ac
         {action.status === "approved" && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-success">
             <CheckCircle className="w-3.5 h-3.5" />
-            Approved
+            {isAr ? "Sent" : "Approved"}
           </span>
         )}
       </div>

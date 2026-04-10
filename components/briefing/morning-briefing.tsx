@@ -1,23 +1,34 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sun, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { Sun, RefreshCw, ChevronDown, ChevronUp, Search } from "lucide-react";
 import type { Action } from "@/lib/types";
+import type { DataSource } from "@/lib/types";
 
 interface MorningBriefingProps {
   userId: string;
   actions: Action[];
+  dataSources?: DataSource[];
   onComplete?: () => void;
+  onRefreshActions?: () => void;
 }
 
-export function MorningBriefing({ userId, actions, onComplete }: MorningBriefingProps) {
+export function MorningBriefing({ userId, actions, dataSources, onComplete, onRefreshActions }: MorningBriefingProps) {
   const [briefing, setBriefing] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isScanningAr, setIsScanningAr] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasFetched = useRef(false);
+
+  const hasArSources = dataSources?.some((ds) => {
+    try {
+      const meta = typeof ds.metadata === "string" ? JSON.parse(ds.metadata) : ds.metadata;
+      return meta?.shape === "ar";
+    } catch { return false; }
+  }) ?? false;
 
   useEffect(() => {
     if (userId && actions.length > 0 && !hasFetched.current && !isLoaded) {
@@ -95,6 +106,62 @@ export function MorningBriefing({ userId, actions, onComplete }: MorningBriefing
     fetchBriefing();
   };
 
+  const handleScanAr = async () => {
+    setIsScanningAr(true);
+    setError(null);
+    setBriefing("");
+    setIsCollapsed(false);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          message: "Run the ar-followup skill: scan all ready AR data sources, create actions for overdue invoices, and draft dunning emails. Summarize the results.",
+        }),
+      });
+
+      if (!res.ok || !res.body) {
+        setError("Failed to scan AR aging");
+        setIsScanningAr(false);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let content = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value);
+        const lines = text.split("\n").filter((l) => l.startsWith("data: "));
+
+        for (const line of lines) {
+          try {
+            const json = JSON.parse(line.replace("data: ", ""));
+            if (json.done) break;
+            if (json.token) {
+              content += json.token;
+              setBriefing(content);
+            }
+          } catch {
+            // skip malformed SSE lines
+          }
+        }
+      }
+
+      setIsLoaded(true);
+      onRefreshActions?.();
+    } catch {
+      setError("AR scan failed. Try again.");
+    } finally {
+      setIsScanningAr(false);
+    }
+  };
+
   if (actions.length === 0) return null;
 
   return (
@@ -132,6 +199,20 @@ export function MorningBriefing({ userId, actions, onComplete }: MorningBriefing
           </div>
         </div>
         <div className="flex items-center gap-0.5">
+          <button
+            onClick={handleScanAr}
+            disabled={isScanningAr || isLoading || !hasArSources}
+            className="px-2 py-1 rounded-md text-[10px] font-medium transition-colors disabled:opacity-40"
+            style={{ color: "#8B7355", border: "1px solid #E8D5B8" }}
+            onMouseEnter={(e) => { if (hasArSources) e.currentTarget.style.background = "rgba(139, 105, 20, 0.08)"; }}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            title={hasArSources ? "Scan AR aging" : "Upload an AR aging CSV to enable"}
+          >
+            <span className="inline-flex items-center gap-1">
+              <Search className={`w-3 h-3 ${isScanningAr ? "animate-spin" : ""}`} />
+              Scan AR
+            </span>
+          </button>
           {isLoaded && (
             <button
               onClick={handleRefresh}

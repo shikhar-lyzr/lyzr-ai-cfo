@@ -1,4 +1,4 @@
-export type ActionType = "variance" | "anomaly" | "recommendation";
+export type ActionType = "variance" | "anomaly" | "recommendation" | "ar_followup";
 export type Severity = "critical" | "warning" | "info";
 export type ActionStatus = "pending" | "flagged" | "dismissed" | "approved";
 export type DataSourceType = "csv" | "sheets";
@@ -17,6 +17,8 @@ export interface Action {
   sourceName: string;
   sourceDataSourceId: string;
   createdAt: Date;
+  invoiceId?: string;
+  draftBody?: string;
 }
 
 export interface ChatMessage {

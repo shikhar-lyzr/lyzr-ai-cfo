@@ -5,13 +5,14 @@ import { ResizableSplitPane } from "@/components/layout/resizable-split-pane";
 import { ActionFeed } from "@/components/feed/action-feed";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { MorningBriefing } from "@/components/briefing/morning-briefing";
-import type { Action, ChatMessage } from "@/lib/types";
+import type { Action, ChatMessage, DataSource } from "@/lib/types";
 
 export default function DashboardHome() {
   const [actions, setActions] = useState<Action[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
 
@@ -40,9 +41,19 @@ export default function DashboardHome() {
     setIsLoading(false);
   }, [userId]);
 
+  const fetchDataSources = useCallback(async () => {
+    if (!userId) return;
+    const res = await fetch(`/api/data-sources?userId=${userId}`);
+    if (res.ok) {
+      const data = await res.json();
+      setDataSources(data);
+    }
+  }, [userId]);
+
   useEffect(() => {
     fetchActions();
-  }, [fetchActions]);
+    fetchDataSources();
+  }, [fetchActions, fetchDataSources]);
 
   const handleFlag = async (id: string) => {
     if (!userId) return;
@@ -82,6 +93,21 @@ export default function DashboardHome() {
     if (res.ok) {
       setActions((prev) =>
         prev.map((a) => (a.id === id ? { ...a, status: "approved" } : a))
+      );
+    }
+  };
+
+  const handleArOp = async (id: string, op: "mark_sent" | "snooze" | "escalate") => {
+    if (!userId) return;
+    const res = await fetch(`/api/actions/${id}/ar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op }),
+    });
+    if (res.ok) {
+      const statusMap = { mark_sent: "approved", snooze: "dismissed", escalate: "flagged" } as const;
+      setActions((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: statusMap[op] } : a))
       );
     }
   };
@@ -247,13 +273,14 @@ export default function DashboardHome() {
           onApprove={handleApprove}
           onAskAI={handleAskAI}
           onDismiss={handleDismiss}
+          onArOp={handleArOp}
         />
       }
       right={
         <div className="flex flex-col h-full bg-slate-50/50 p-4 gap-4 border-l border-border/40">
           {/* Morning Briefing — auto-generates on first load */}
           <div className="shrink-0 drop-shadow-sm">
-            <MorningBriefing userId={userId} actions={actions} />
+            <MorningBriefing userId={userId} actions={actions} dataSources={dataSources} onRefreshActions={fetchActions} />
           </div>
 
           {/* Chat Panel — for follow-up questions */}

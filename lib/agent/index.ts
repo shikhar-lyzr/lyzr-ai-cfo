@@ -256,4 +256,52 @@ Do NOT skip any significant variances and DO NOT create actions individually. Th
   return fullText;
 }
 
+/**
+ * Run an agent query for AR upload analysis — returns the full response.
+ */
+export async function analyzeArUpload(
+  userId: string,
+  dataSourceId: string,
+  fileName: string,
+  invoiceCount: number
+): Promise<string> {
+  ensureApiKey();
+
+  const context = await buildContext(userId);
+  const tools = createFinancialTools(userId);
+
+  const prompt = `A new AR aging CSV "${fileName}" was just uploaded with ${invoiceCount} invoices (data source ID: ${dataSourceId}).
+
+Execute this workflow:
+1. Call scan_ar_aging with dataSourceId="${dataSourceId}"
+2. Compile eligible invoices into a single batch and call create_ar_actions
+3. For each newly-created action, call draft_dunning_email with the bucket-appropriate tone
+4. Provide a brief summary of total overdue balance and top three items
+
+Do not create actions for invoices in cooldown or snoozed.`;
+
+  const result = query({
+    prompt,
+    dir: AGENT_DIR,
+    model: MODEL,
+    systemPromptSuffix: context,
+    tools,
+    replaceBuiltinTools: true,
+    maxTurns: 10,
+    constraints: { temperature: 0.3 },
+  });
+
+  let fullText = "";
+
+  for await (const msg of result) {
+    if (msg.type === "delta" && msg.deltaType === "text") {
+      fullText += msg.content;
+    } else if (msg.type === "assistant" && !fullText && msg.content) {
+      fullText = msg.content;
+    }
+  }
+
+  return fullText;
+}
+
 export type { GCMessage };

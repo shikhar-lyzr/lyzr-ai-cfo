@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { analyzeUpload } from "@/lib/agent";
+import { analyzeUpload, analyzeArUpload } from "@/lib/agent";
 import { inferColumnMapping } from "@/lib/csv/llm-mapper";
+import { detectCsvShape } from "@/lib/csv/detect-shape";
+import { parseArCsv } from "@/lib/csv/ar-parser";
 
 interface ParsedRow {
   account: string;
@@ -64,12 +66,141 @@ export async function POST(request: NextRequest) {
 
   const text = await file.text();
   const { headers, rows } = parseCSV(text);
+
+  // ── Shape detection ─────────────────────────────────────────────
+  const shape = await detectCsvShape(headers);
+
+  if (shape === "unknown") {
+    return NextResponse.json(
+      {
+        error: "Could not classify this CSV as variance or AR data. Detected headers: " + headers.join(", "),
+      },
+      { status: 400 }
+    );
+  }
+
+  if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {
+    return NextResponse.json(
+      { error: "AI engine not configured. Set LYZR_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY." },
+      { status: 503 }
+    );
+  }
+
+  // ── AR flow ─────────────────────────────────────────────────────
+  if (shape === "ar") {
+    return handleArUpload(userId, file.name, headers, rows);
+  }
+
+  // ── Variance flow (existing) ────────────────────────────────────
+  return handleVarianceUpload(userId, file.name, headers, rows);
+}
+
+async function handleArUpload(
+  userId: string,
+  fileName: string,
+  headers: string[],
+  rows: string[][]
+) {
+  const parseResult = await parseArCsv(headers, rows);
+
+  if (parseResult.invoices.length === 0) {
+    return NextResponse.json(
+      {
+        error: "No valid invoices found in CSV.",
+        skipped: parseResult.skipped,
+      },
+      { status: 422 }
+    );
+  }
+
+  const dataSource = await prisma.dataSource.create({
+    data: {
+      userId,
+      type: "csv",
+      name: fileName,
+      status: "processing",
+      metadata: JSON.stringify({ headers, shape: "ar" }),
+    },
+  });
+
+  // Upsert invoices — idempotent on (dataSourceId, invoiceNumber)
+  for (const inv of parseResult.invoices) {
+    await prisma.invoice.upsert({
+      where: {
+        dataSourceId_invoiceNumber: {
+          dataSourceId: dataSource.id,
+          invoiceNumber: inv.invoiceNumber,
+        },
+      },
+      create: {
+        dataSourceId: dataSource.id,
+        invoiceNumber: inv.invoiceNumber,
+        customer: inv.customer,
+        customerEmail: inv.customerEmail,
+        amount: inv.amount,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+      },
+      update: {
+        customer: inv.customer,
+        customerEmail: inv.customerEmail,
+        amount: inv.amount,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+      },
+    });
+  }
+
+  const invoiceCount = await prisma.invoice.count({
+    where: { dataSourceId: dataSource.id },
+  });
+
+  await prisma.dataSource.update({
+    where: { id: dataSource.id },
+    data: {
+      status: "ready",
+      recordCount: invoiceCount,
+    },
+  });
+
+  let agentAnalysis: string | null = null;
+  try {
+    agentAnalysis = await analyzeArUpload(
+      userId,
+      dataSource.id,
+      fileName,
+      invoiceCount
+    );
+  } catch (err) {
+    console.error("[upload] AR agent analysis failed:", err);
+  }
+
+  const actionCount = await prisma.action.count({
+    where: { userId, sourceDataSourceId: dataSource.id },
+  });
+
+  return NextResponse.json({
+    dataSource: {
+      id: dataSource.id,
+      name: dataSource.name,
+      recordCount: invoiceCount,
+    },
+    shape: "ar",
+    actionsGenerated: actionCount,
+    agentAnalysis,
+    ...(parseResult.skipped.length > 0 ? { skippedRows: parseResult.skipped.length } : {}),
+  });
+}
+
+async function handleVarianceUpload(
+  userId: string,
+  fileName: string,
+  headers: string[],
+  rows: string[][]
+) {
   let mapping = autoDetectColumns(headers);
   let mappingSource: "regex" | "llm" = "regex";
 
-  // If the regex autodetect couldn't find required columns, fall back to the
-  // LLM mapper. This handles non-standard headers like "Cost Center" / "Spend"
-  // that the regex doesn't catch.
   if (mapping.account === undefined || mapping.actual === undefined) {
     console.log(
       "[upload] regex mapping incomplete, trying LLM mapper. headers:",
@@ -107,9 +238,9 @@ export async function POST(request: NextRequest) {
     data: {
       userId,
       type: "csv",
-      name: file.name,
+      name: fileName,
       status: "processing",
-      metadata: JSON.stringify({ headers, mapping }),
+      metadata: JSON.stringify({ headers, mapping, shape: "variance" }),
     },
   });
 
@@ -131,29 +262,17 @@ export async function POST(request: NextRequest) {
       recordCount: parsedRows.length,
     },
   });
-  // === PATH A: Agent-first architecture ===
-  // The gitclaw agent is the sole engine for variance detection and action creation.
-  // It uses analyze_financial_data to compute variances and create_action to surface items.
-  // No deterministic JS fallback — the agent IS the product.
-
-  if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {
-    return NextResponse.json(
-      { error: "AI engine not configured. Set LYZR_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY." },
-      { status: 503 }
-    );
-  }
 
   let agentAnalysis: string | null = null;
   try {
     agentAnalysis = await analyzeUpload(
       userId,
       dataSource.id,
-      file.name,
+      fileName,
       parsedRows.length
     );
   } catch (err) {
     console.error("[upload] agent analysis failed:", err);
-    // Partial success — records saved but agent couldn't create actions
     const fallbackCount = await prisma.action.count({
       where: { userId, sourceDataSourceId: dataSource.id },
     });
@@ -163,6 +282,7 @@ export async function POST(request: NextRequest) {
         name: dataSource.name,
         recordCount: parsedRows.length,
       },
+      shape: "variance",
       actionsGenerated: fallbackCount,
       agentAnalysis: null,
       mapping,
@@ -181,6 +301,7 @@ export async function POST(request: NextRequest) {
       name: dataSource.name,
       recordCount: parsedRows.length,
     },
+    shape: "variance",
     actionsGenerated: finalActionCount,
     agentAnalysis,
     mapping,

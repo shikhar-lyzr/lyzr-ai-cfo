@@ -30,9 +30,10 @@ model DataSource {
   metadata    String?
   createdAt   DateTime @default(now())
 
-  user    User              @relation(fields: [userId], references: [id])
-  records FinancialRecord[]
-  actions Action[]
+  user     User              @relation(fields: [userId], references: [id])
+  records  FinancialRecord[]
+  actions  Action[]
+  invoices Invoice[]
 }
 
 model FinancialRecord {
@@ -57,10 +58,13 @@ model Action {
   driver             String
   status             String   @default("pending")
   sourceDataSourceId String
+  invoiceId          String?
+  draftBody          String?
   createdAt          DateTime @default(now())
 
   user         User         @relation(fields: [userId], references: [id])
   dataSource   DataSource   @relation(fields: [sourceDataSourceId], references: [id])
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   chatMessages ChatMessage[]
   events       ActionEvent[]
 }
@@ -87,4 +91,24 @@ model ActionEvent {
 
   action Action @relation(fields: [actionId], references: [id])
   user   User   @relation(fields: [userId], references: [id])
+}
+
+model Invoice {
+  id            String    @id @default(cuid())
+  dataSourceId  String
+  invoiceNumber String
+  customer      String
+  customerEmail String?
+  amount        Float
+  invoiceDate   DateTime
+  dueDate       DateTime
+  status        String    @default("open")
+  lastDunnedAt  DateTime?
+  snoozedUntil  DateTime?
+  createdAt     DateTime  @default(now())
+
+  dataSource DataSource @relation(fields: [dataSourceId], references: [id])
+  actions    Action[]
+
+  @@unique([dataSourceId, invoiceNumber])
 }

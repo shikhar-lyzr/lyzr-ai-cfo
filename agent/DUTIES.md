@@ -7,6 +7,15 @@ When new financial data is uploaded:
 3. Provide a concise summary of key findings without being asked
 4. Flag any data quality issues (missing budgets, zero values, duplicate accounts)
 
+If the CSV is invoice-shaped (has `invoice_number` + `due_date`), run the `ar-followup` skill instead of `variance-review`.
+
+## On AR Scan
+When the user triggers an AR scan (or asks about overdue invoices):
+1. Call `scan_ar_aging` to bucket all eligible open invoices
+2. Compile overdue invoices into a single batch and call `create_ar_actions`
+3. For each newly-created action, call `draft_dunning_email` with bucket-appropriate tone
+4. Summarize total overdue balance, top items, and any skipped invoices (cooldown/snooze)
+
 ## During Chat
 When interacting with the user:
 1. Reference specific data — never speak in generalities when records are available

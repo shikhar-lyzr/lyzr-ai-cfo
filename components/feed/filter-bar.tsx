@@ -61,6 +61,7 @@ export function FilterBar({
           { value: "variance", label: "Variance" },
           { value: "anomaly", label: "Anomaly" },
           { value: "recommendation", label: "Rec." },
+          { value: "ar_followup", label: "AR" },
         ]}
         active={activeType}
         onChange={(v) => onTypeChange(v as ActionType | "all")}

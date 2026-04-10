@@ -11,6 +11,7 @@ interface ActionFeedProps {
   onApprove?: (id: string) => void;
   onAskAI?: (id: string) => void;
   onDismiss?: (id: string) => void;
+  onArOp?: (id: string, op: "mark_sent" | "snooze" | "escalate") => void;
 }
 
 const severityOrder: Record<Severity, number> = {
@@ -19,7 +20,7 @@ const severityOrder: Record<Severity, number> = {
   info: 2,
 };
 
-export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss }: ActionFeedProps) {
+export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss, onArOp }: ActionFeedProps) {
   const [typeFilter, setTypeFilter] = useState<ActionType | "all">("all");
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
   const [statusFilter, setStatusFilter] = useState<ActionStatus | "all">("all");
@@ -66,6 +67,7 @@ export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss }: A
               onApprove={onApprove}
               onAskAI={onAskAI}
               onDismiss={onDismiss}
+              onArOp={onArOp}
             />
           ))
         )}
