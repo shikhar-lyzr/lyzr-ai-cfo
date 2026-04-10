@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { analyzeUpload } from "@/lib/agent";
 
 const SAMPLE_RECORDS = [
   { account: "Marketing - Digital Ads", period: "2026-Q1", actual: 19800, budget: 15100, category: "Marketing" },
@@ -56,40 +57,24 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Generate variance actions
-  const variances = SAMPLE_RECORDS
-    .filter((r) => r.budget > 0)
-    .map((r) => {
-      const pct = ((r.actual - r.budget) / r.budget) * 100;
-      return { ...r, variancePercent: pct };
-    })
-    .filter((r) => Math.abs(r.variancePercent) > 5)
-    .sort((a, b) => Math.abs(b.variancePercent) - Math.abs(a.variancePercent));
-
-  for (const v of variances) {
-    const isOver = v.variancePercent > 0;
-    const severity =
-      Math.abs(v.variancePercent) > 20
-        ? "critical"
-        : Math.abs(v.variancePercent) > 10
-          ? "warning"
-          : "info";
-
-    await prisma.action.create({
-      data: {
-        userId,
-        type: "variance",
-        severity,
-        headline: `${v.account} ${isOver ? "over" : "under"} budget by ${Math.abs(v.variancePercent).toFixed(1)}%`,
-        detail: `$${(v.actual / 1000).toFixed(1)}K actual vs $${(v.budget / 1000).toFixed(1)}K budget`,
-        driver: `Variance of $${((v.actual - v.budget) / 1000).toFixed(1)}K in ${v.category}`,
-        sourceDataSourceId: dataSource.id,
-      },
-    });
+  // === PATH A: Agent creates all actions ===
+  // The gitclaw agent analyzes the sample data and creates action items using its tools,
+  // just as it does for real CSV uploads. No JS variance loop.
+  let actionsGenerated = 0;
+  if (process.env.OPENAI_API_KEY || process.env.LYZR_API_KEY || process.env.GEMINI_API_KEY) {
+    try {
+      await analyzeUpload(userId, dataSource.id, dataSource.name, SAMPLE_RECORDS.length);
+      actionsGenerated = await prisma.action.count({
+        where: { userId, sourceDataSourceId: dataSource.id },
+      });
+    } catch (err) {
+      console.error("[seed-demo] agent analysis failed:", err);
+    }
   }
 
   return NextResponse.json({
     dataSource: { id: dataSource.id, name: dataSource.name, recordCount: SAMPLE_RECORDS.length },
-    actionsGenerated: variances.length,
+    actionsGenerated,
   });
 }
+

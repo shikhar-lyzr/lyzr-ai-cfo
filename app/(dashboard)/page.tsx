@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ResizableSplitPane } from "@/components/layout/resizable-split-pane";
 import { ActionFeed } from "@/components/feed/action-feed";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { MorningBriefing } from "@/components/briefing/morning-briefing";
 import type { Action, ChatMessage } from "@/lib/types";
 
 export default function DashboardHome() {
@@ -24,7 +25,9 @@ export default function DashboardHome() {
 
   const fetchActions = useCallback(async () => {
     if (!userId) return;
-    const res = await fetch(`/api/actions?userId=${userId}`);
+    const res = await fetch(`/api/actions?userId=${userId}&t=${Date.now()}`, {
+      cache: "no-store",
+    });
     if (res.ok) {
       const data = await res.json();
       setActions(
@@ -65,6 +68,20 @@ export default function DashboardHome() {
     if (res.ok) {
       setActions((prev) =>
         prev.map((a) => (a.id === id ? { ...a, status: "dismissed" } : a))
+      );
+    }
+  };
+
+  const handleApprove = async (id: string) => {
+    if (!userId) return;
+    const res = await fetch(`/api/actions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" }),
+    });
+    if (res.ok) {
+      setActions((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: "approved" } : a))
       );
     }
   };
@@ -169,10 +186,15 @@ export default function DashboardHome() {
     }
   };
 
-  if (isLoading || !userId) {
+  if (isLoading || !userId || isSeeding) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex flex-col items-center justify-center h-full gap-4">
         <div className="w-8 h-8 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+        {isSeeding && (
+          <p className="text-sm text-text-secondary w-64 text-center">
+            AI is analyzing the demo dataset... This usually takes 10-15 seconds.
+          </p>
+        )}
       </div>
     );
   }
@@ -222,17 +244,29 @@ export default function DashboardHome() {
         <ActionFeed
           actions={actions}
           onFlag={handleFlag}
+          onApprove={handleApprove}
           onAskAI={handleAskAI}
           onDismiss={handleDismiss}
         />
       }
       right={
-        <ChatPanel
-          messages={messages}
-          onSend={(content) => handleSendMessage(content)}
-          isStreaming={isStreaming}
-        />
+        <div className="flex flex-col h-full bg-slate-50/50 p-4 gap-4 border-l border-border/40">
+          {/* Morning Briefing — auto-generates on first load */}
+          <div className="shrink-0 drop-shadow-sm">
+            <MorningBriefing userId={userId} actions={actions} />
+          </div>
+
+          {/* Chat Panel — for follow-up questions */}
+          <div className="flex-1 min-h-0 rounded-xl border border-border/60 shadow-[0_2px_12px_rgba(0,0,0,0.02)] overflow-hidden">
+            <ChatPanel
+              messages={messages}
+              onSend={(content) => handleSendMessage(content)}
+              isStreaming={isStreaming}
+            />
+          </div>
+        </div>
       }
     />
   );
 }
+

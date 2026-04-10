@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { analyzeUpload } from "@/lib/agent";
+import { inferColumnMapping } from "@/lib/csv/llm-mapper";
 
 interface ParsedRow {
   account: string;
@@ -63,13 +64,43 @@ export async function POST(request: NextRequest) {
 
   const text = await file.text();
   const { headers, rows } = parseCSV(text);
-  const mapping = autoDetectColumns(headers);
+  let mapping = autoDetectColumns(headers);
+  let mappingSource: "regex" | "llm" = "regex";
 
+  // If the regex autodetect couldn't find required columns, fall back to the
+  // LLM mapper. This handles non-standard headers like "Cost Center" / "Spend"
+  // that the regex doesn't catch.
   if (mapping.account === undefined || mapping.actual === undefined) {
-    return NextResponse.json(
-      { error: "Could not detect required columns (account, actual). Please check your CSV format." },
-      { status: 422 }
+    console.log(
+      "[upload] regex mapping incomplete, trying LLM mapper. headers:",
+      headers
     );
+    try {
+      const llmMapping = await inferColumnMapping(headers, rows);
+      if (llmMapping) {
+        mapping = llmMapping;
+        mappingSource = "llm";
+        console.log("[upload] LLM mapping succeeded:", llmMapping);
+      } else {
+        return NextResponse.json(
+          {
+            error:
+              "Could not detect required columns (account, actual) via either regex or AI mapping. Please ensure your CSV has columns for account/line-item names and actual/spent amounts.",
+          },
+          { status: 422 }
+        );
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "RATE_LIMIT") {
+        return NextResponse.json(
+          {
+            error: "AI column mapper rate limit reached. Please wait 60 seconds and try again.",
+          },
+          { status: 429 }
+        );
+      }
+      return NextResponse.json({ error: "Mapping failed" }, { status: 500 });
+    }
   }
 
   const dataSource = await prisma.dataSource.create({
@@ -100,55 +131,49 @@ export async function POST(request: NextRequest) {
       recordCount: parsedRows.length,
     },
   });
+  // === PATH A: Agent-first architecture ===
+  // The gitclaw agent is the sole engine for variance detection and action creation.
+  // It uses analyze_financial_data to compute variances and create_action to surface items.
+  // No deterministic JS fallback — the agent IS the product.
 
-  const variances = parsedRows
-    .filter((r) => r.budget > 0)
-    .map((r) => {
-      const pct = ((r.actual - r.budget) / r.budget) * 100;
-      return { ...r, variancePercent: pct };
-    })
-    .filter((r) => Math.abs(r.variancePercent) > 5)
-    .sort((a, b) => Math.abs(b.variancePercent) - Math.abs(a.variancePercent));
+  if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {
+    return NextResponse.json(
+      { error: "AI engine not configured. Set LYZR_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY." },
+      { status: 503 }
+    );
+  }
 
-  for (const v of variances) {
-    const isOver = v.variancePercent > 0;
-    const severity =
-      Math.abs(v.variancePercent) > 20
-        ? "critical"
-        : Math.abs(v.variancePercent) > 10
-          ? "warning"
-          : "info";
-
-    await prisma.action.create({
-      data: {
-        userId,
-        type: "variance",
-        severity,
-        headline: `${v.account} ${isOver ? "over" : "under"} budget by ${Math.abs(v.variancePercent).toFixed(1)}%`,
-        detail: `$${(v.actual / 1000).toFixed(1)}K actual vs $${(v.budget / 1000).toFixed(1)}K planned`,
-        driver: `Variance of $${((v.actual - v.budget) / 1000).toFixed(1)}K in ${v.category}`,
-        sourceDataSourceId: dataSource.id,
+  let agentAnalysis: string | null = null;
+  try {
+    agentAnalysis = await analyzeUpload(
+      userId,
+      dataSource.id,
+      file.name,
+      parsedRows.length
+    );
+  } catch (err) {
+    console.error("[upload] agent analysis failed:", err);
+    // Partial success — records saved but agent couldn't create actions
+    const fallbackCount = await prisma.action.count({
+      where: { userId, sourceDataSourceId: dataSource.id },
+    });
+    return NextResponse.json({
+      dataSource: {
+        id: dataSource.id,
+        name: dataSource.name,
+        recordCount: parsedRows.length,
       },
+      actionsGenerated: fallbackCount,
+      agentAnalysis: null,
+      mapping,
+      mappingSource,
+      warning: "AI analysis failed — data saved but actions may be incomplete",
     });
   }
 
-  // Run agent analysis if configured
-  let agentAnalysis: string | null = null;
-  const agentAvailable = !!process.env.LYZR_API_KEY;
-
-  if (agentAvailable) {
-    try {
-      agentAnalysis = await analyzeUpload(
-        userId,
-        dataSource.id,
-        file.name,
-        parsedRows.length
-      );
-    } catch {
-      // Agent analysis is non-blocking — basic variances are already generated
-      agentAnalysis = null;
-    }
-  }
+  const finalActionCount = await prisma.action.count({
+    where: { userId, sourceDataSourceId: dataSource.id },
+  });
 
   return NextResponse.json({
     dataSource: {
@@ -156,8 +181,9 @@ export async function POST(request: NextRequest) {
       name: dataSource.name,
       recordCount: parsedRows.length,
     },
-    actionsGenerated: variances.length,
+    actionsGenerated: finalActionCount,
     agentAnalysis,
     mapping,
+    mappingSource,
   });
 }

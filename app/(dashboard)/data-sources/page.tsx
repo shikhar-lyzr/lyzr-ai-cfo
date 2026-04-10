@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { UploadArea } from "@/components/data-sources/upload-area";
 import { SourceList } from "@/components/data-sources/source-list";
 import type { DataSource } from "@/lib/types";
 
 export default function DataSourcesPage() {
+  const router = useRouter();
   const [sources, setSources] = useState<DataSource[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
@@ -54,10 +56,18 @@ export default function DataSourcesPage() {
 
       if (res.ok) {
         const result = await res.json();
+        const mappingNote =
+          result.mappingSource === "llm"
+            ? " (columns mapped by AI — non-standard headers detected)"
+            : "";
         setUploadResult(
-          `Processed ${result.dataSource.recordCount} records, generated ${result.actionsGenerated} variance actions.`
+          `✓ Processed ${result.dataSource.recordCount} records, generated ${result.actionsGenerated} variance actions.${mappingNote} Redirecting to dashboard...`
         );
         fetchSources();
+        // Redirect to dashboard after a short delay so user sees the success message
+        setTimeout(() => {
+          router.push("/");
+        }, 1500);
       } else {
         const err = await res.json();
         setUploadResult(`Error: ${err.error}`);

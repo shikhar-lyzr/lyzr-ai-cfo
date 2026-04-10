@@ -15,6 +15,13 @@ export async function GET() {
     select: { credits: true, name: true, email: true },
   });
 
+  if (!user) {
+    // Session token exists but user was deleted from DB (e.g., after force-reset)
+    const response = NextResponse.json({ error: "User no longer exists" }, { status: 401 });
+    response.cookies.delete("lyzr-session");
+    return response;
+  }
+
   return NextResponse.json({
     ...session,
     name: user?.name ?? session.name,

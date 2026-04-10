@@ -208,75 +208,87 @@ export function createFinancialTools(userId: string) {
     }
   );
 
-  const createAction = tool(
-    "create_action",
-    "Create a new action item in the user's feed. Use when you identify a variance or anomaly that needs attention.",
+  const createActions = tool(
+    "create_actions",
+    "Create multiple action items in the user's feed in a single batch. Use this to bulk-create actions for all identified variances to save API requests.",
     {
       type: "object",
       properties: {
-        type: {
-          type: "string",
-          enum: ["variance", "anomaly", "recommendation"],
-          description: "Type of action",
-        },
-        severity: {
-          type: "string",
-          enum: ["critical", "warning", "info"],
-          description:
-            "Severity: critical (>20% variance), warning (10-20%), info (5-10%)",
-        },
-        headline: {
-          type: "string",
-          description:
-            "Short headline (e.g., 'Marketing over budget by 23.5%')",
-        },
-        detail: {
-          type: "string",
-          description: "Detail with dollar figures (e.g., '$45.2K actual vs $36.6K planned')",
-        },
-        driver: {
-          type: "string",
-          description: "What is driving this variance",
-        },
-        dataSourceId: {
-          type: "string",
-          description: "ID of the data source this action relates to",
+        actions: {
+          type: "array",
+          description: "List of actions to create",
+          items: {
+            type: "object",
+            properties: {
+              type: {
+                type: "string",
+                enum: ["variance", "anomaly", "recommendation"],
+              },
+              severity: {
+                type: "string",
+                enum: ["critical", "warning", "info"],
+              },
+              headline: { type: "string" },
+              detail: { type: "string" },
+              driver: { type: "string" },
+              dataSourceId: { type: "string" },
+            },
+            required: ["type", "severity", "headline", "detail", "driver", "dataSourceId"],
+          },
         },
       },
-      required: ["type", "severity", "headline", "detail", "driver", "dataSourceId"],
+      required: ["actions"],
     },
     async (args) => {
-      // Check for duplicates
-      const existing = await prisma.action.findFirst({
-        where: {
-          userId,
-          headline: args.headline,
-          status: "pending",
-        },
-      });
+      // Type definitions for the tool args
+      type ToolAction = {
+        type: string;
+        severity: string;
+        headline: string;
+        detail: string;
+        driver: string;
+        dataSourceId: string;
+      };
 
-      if (existing) {
-        return {
-          text: `Action already exists: "${existing.headline}" (${existing.id})`,
-          details: { duplicate: true, existingId: existing.id },
-        };
+      const items = (args.actions as ToolAction[]) || [];
+
+      if (!items || items.length === 0) {
+        return { text: "No actions provided to create." };
       }
 
-      const action = await prisma.action.create({
-        data: {
+      // Check for duplicates
+      const headlines = items.map((a) => a.headline);
+      const existing = await prisma.action.findMany({
+        where: {
           userId,
-          type: args.type,
-          severity: args.severity,
-          headline: args.headline,
-          detail: args.detail,
-          driver: args.driver,
-          sourceDataSourceId: args.dataSourceId,
+          headline: { in: headlines },
+          status: "pending",
         },
+        select: { headline: true },
+      });
+      const existingHeadlines = new Set(existing.map((e) => e.headline));
+
+      const newActions = items.filter((a) => !existingHeadlines.has(a.headline));
+      
+      if (newActions.length === 0) {
+        return { text: `All ${items.length} actions already exist (deduplicated by headline).` };
+      }
+
+      await prisma.action.createMany({
+        data: newActions.map((a) => ({
+          userId,
+          type: a.type as "variance" | "anomaly" | "recommendation",
+          severity: a.severity as "critical" | "warning" | "info",
+          headline: a.headline,
+          detail: a.detail,
+          driver: a.driver,
+          sourceDataSourceId: a.dataSourceId,
+        })),
       });
 
       return {
-        text: `Created ${args.severity} action: "${args.headline}" (ID: ${action.id})`,
-        details: { actionId: action.id },
+        text: `Successfully created ${newActions.length} actions in batch. (${existingHeadlines.size} skipped as duplicates)`,
+        details: { created: newActions.length, skipped: existingHeadlines.size },
       };
     }
   );
@@ -293,7 +305,7 @@ export function createFinancialTools(userId: string) {
         },
         status: {
           type: "string",
-          enum: ["pending", "flagged", "dismissed"],
+          enum: ["pending", "flagged", "dismissed", "approved"],
           description: "New status for the action",
         },
       },
@@ -459,7 +471,7 @@ export function createFinancialTools(userId: string) {
   return [
     searchRecords,
     analyzeFinancialData,
-    createAction,
+    createActions,
     updateAction,
     generateCommentary,
     draftEmail,

@@ -5,12 +5,19 @@ import { createFinancialTools } from "./tools";
 
 const AGENT_DIR = process.cwd() + "/agent";
 
-// gitclaw auto-reads LYZR_API_KEY for the "lyzr" provider (loader.js line 294)
-const MODEL = "lyzr:default@https://agent-prod.studio.lyzr.ai/v4";
+// Inject the Lyzr Key as OpenAI compatible key for gitclaw pi-ai router
+if (process.env.LYZR_API_KEY && !process.env.OPENAI_API_KEY) {
+  process.env.OPENAI_API_KEY = process.env.LYZR_API_KEY;
+}
+
+// We use the lyzr provider pattern specified by the GitClaw docs to securely
+// route the LLM operations to the Lyzr Agent Engine using the provided ID.
+// Note: the actual agent _id (69d43cce...) differs from the Studio URL slug.
+const MODEL = "lyzr:69d43ccef008dd037bad64d7@https://agent-prod.studio.lyzr.ai/v4";
 
 function ensureApiKey(): void {
-  if (!process.env.LYZR_API_KEY) {
-    throw new Error("LYZR_API_KEY is not set in .env");
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI API Key (or LYZR_API_KEY proxy) is not set");
   }
 }
 
@@ -21,7 +28,7 @@ async function buildContext(
   userId: string,
   actionId?: string
 ): Promise<string> {
-  const [dataSources, pendingActions, recentMessages] = await Promise.all([
+  const [dataSources, pendingActions, recentMessages, actionEvents] = await Promise.all([
     prisma.dataSource.findMany({
       where: { userId, status: "ready" },
       select: { id: true, name: true, recordCount: true, createdAt: true },
@@ -37,6 +44,12 @@ async function buildContext(
       where: { userId },
       orderBy: { timestamp: "desc" },
       take: 10,
+    }),
+    prisma.actionEvent.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: { action: { select: { headline: true, severity: true } } },
     }),
   ]);
 
@@ -94,6 +107,26 @@ async function buildContext(
     );
   }
 
+  // Decision history — lets the agent learn from user behavior
+  if (actionEvents.length > 0) {
+    const approved = actionEvents.filter((e) => e.toStatus === "approved").length;
+    const flagged = actionEvents.filter((e) => e.toStatus === "flagged").length;
+    const dismissed = actionEvents.filter((e) => e.toStatus === "dismissed").length;
+
+    parts.push(
+      "## Recent User Decisions\n" +
+        `Summary: ${approved} approved, ${flagged} flagged for review, ${dismissed} dismissed (last 20 actions)\n` +
+        actionEvents
+          .slice(0, 10)
+          .map(
+            (e) =>
+              `- ${e.toStatus.toUpperCase()}: "${e.action.headline}" (${e.action.severity})`
+          )
+          .join("\n") +
+        "\n\nUse this history to prioritize similarly to the user's past preferences."
+    );
+  }
+
   return parts.join("\n\n");
 }
 
@@ -144,11 +177,20 @@ export async function chatWithAgent(
         fullText += msg.content;
         callbacks.onDelta(msg.content);
       } else if (msg.type === "assistant") {
+        if (msg.stopReason === "error") {
+          callbacks.onError(
+            msg.errorMessage || msg.content || "Model returned an error"
+          );
+          return;
+        }
         // Final complete message — use this if we missed deltas
         if (!fullText && msg.content) {
           fullText = msg.content;
           callbacks.onDelta(msg.content);
         }
+      } else if (msg.type === "system" && msg.subtype === "error") {
+        callbacks.onError(msg.content || "Agent system error");
+        return;
       }
     }
   } catch (err) {
@@ -177,12 +219,18 @@ export async function analyzeUpload(
 
   const prompt = `A new CSV file "${fileName}" was just uploaded with ${recordCount} financial records (data source ID: ${dataSourceId}).
 
-Analyze the data using analyze_financial_data tool, then:
-1. Summarize the key findings
-2. Create action items for any significant variances using create_action
-3. Provide a brief commentary
+You are the CFO agent. This is your primary duty: proactive variance detection.
 
-Focus on the most impactful variances first.`;
+Execute this workflow using your tools:
+1. Use analyze_financial_data with dataSourceId="${dataSourceId}" to identify ALL variances exceeding the 5% threshold
+2. Compile ALL significant variances into a single array and use the create_actions tool to bulk-insert them into the user's feed in ONE step. Apply your severity rules:
+   - critical: >20% variance
+   - warning: 10-20% variance  
+   - info: 5-10% variance
+3. Include clear headlines, dollar-amount details, and identify the driver for each action
+4. After all actions are created, provide a brief executive summary of the findings
+
+Do NOT skip any significant variances and DO NOT create actions individually. The user depends on you to catch everything above threshold using a single batch insertion.`;
 
   const result = query({
     prompt,

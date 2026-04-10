@@ -8,6 +8,7 @@ import { FilterBar } from "@/components/feed/filter-bar";
 interface ActionFeedProps {
   actions: Action[];
   onFlag?: (id: string) => void;
+  onApprove?: (id: string) => void;
   onAskAI?: (id: string) => void;
   onDismiss?: (id: string) => void;
 }
@@ -18,7 +19,7 @@ const severityOrder: Record<Severity, number> = {
   info: 2,
 };
 
-export function ActionFeed({ actions, onFlag, onAskAI, onDismiss }: ActionFeedProps) {
+export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss }: ActionFeedProps) {
   const [typeFilter, setTypeFilter] = useState<ActionType | "all">("all");
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
   const [statusFilter, setStatusFilter] = useState<ActionStatus | "all">("all");
@@ -62,6 +63,7 @@ export function ActionFeed({ actions, onFlag, onAskAI, onDismiss }: ActionFeedPr
               key={action.id}
               action={action}
               onFlag={onFlag}
+              onApprove={onApprove}
               onAskAI={onAskAI}
               onDismiss={onDismiss}
             />

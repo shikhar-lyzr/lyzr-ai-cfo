@@ -8,6 +8,7 @@ import { relativeTime, severityColor } from "@/lib/utils";
 interface ActionCardProps {
   action: Action;
   onFlag?: (id: string) => void;
+  onApprove?: (id: string) => void;
   onAskAI?: (id: string) => void;
   onDismiss?: (id: string) => void;
 }
@@ -24,7 +25,7 @@ const severityLabels = {
   info: "Info",
 };
 
-export function ActionCard({ action, onFlag, onAskAI, onDismiss }: ActionCardProps) {
+export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss }: ActionCardProps) {
   const Icon = severityIcons[action.severity] ?? AlertCircle;
 
   return (
@@ -61,11 +62,18 @@ export function ActionCard({ action, onFlag, onAskAI, onDismiss }: ActionCardPro
         {action.status === "pending" && (
           <>
             <button
+              onClick={() => onApprove?.(action.id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-success/30 text-success hover:bg-success/10 transition-colors"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              Approve
+            </button>
+            <button
               onClick={() => onFlag?.(action.id)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-border text-text-secondary hover:bg-border/30 transition-colors"
             >
               <Flag className="w-3.5 h-3.5" />
-              Flag for Review
+              Flag
             </button>
             <button
               onClick={() => onAskAI?.(action.id)}
@@ -90,6 +98,12 @@ export function ActionCard({ action, onFlag, onAskAI, onDismiss }: ActionCardPro
         )}
         {action.status === "dismissed" && (
           <span className="text-xs text-text-secondary">Dismissed</span>
+        )}
+        {action.status === "approved" && (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-success">
+            <CheckCircle className="w-3.5 h-3.5" />
+            Approved
+          </span>
         )}
       </div>
     </div>

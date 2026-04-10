@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   });
 
   const encoder = new TextEncoder();
-  const agentAvailable = !!process.env.LYZR_API_KEY;
+  const agentAvailable = !!(process.env.OPENAI_API_KEY || process.env.LYZR_API_KEY || process.env.GEMINI_API_KEY);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -63,10 +63,50 @@ export async function POST(request: NextRequest) {
           onComplete: async (text) => {
             await finish(text || fullResponse);
           },
-          onError: async (error) => {
-            const errorMsg = `I encountered an issue processing your request. ${error}`;
-            sendToken(errorMsg);
-            await finish(errorMsg);
+          onError: async (errorMsg) => {
+            // If we hit Gemini free tier rate limits (429), gracefully fallback to deterministic response
+            if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED") || errorMsg.includes("Quota")) {
+              const recentActions = await prisma.action.findMany({
+                where: { userId, status: "pending" },
+                orderBy: { createdAt: "desc" },
+                take: 10,
+              });
+
+              let actionContext = "";
+              if (actionId) {
+                const action = await prisma.action.findUnique({
+                  where: { id: actionId },
+                });
+                if (action) {
+                  actionContext = `\nThe user is asking about this specific action: "${action.headline}" — ${action.detail}. Driver: ${action.driver}`;
+                }
+              }
+
+              const fallbackText = "*(I hit a temporary Google Cloud rate limit so I am in fallback mode)*\n\n" + generatePlaceholderResponse(
+                message,
+                recentActions,
+                actionContext
+              );
+
+              // Clear the error chunking and send the clean fallback
+              const words = fallbackText.split(" ");
+              let fallbackStreamed = "";
+              for (let i = 0; i < words.length; i++) {
+                const chunk = (i === 0 ? "" : " ") + words[i];
+                fallbackStreamed += chunk;
+                sendToken(chunk);
+                await new Promise((r) => setTimeout(r, 20));
+              }
+
+              await finish(fallbackText);
+              return;
+            }
+
+            // Normal unhandled error
+            console.error("[chat] Agent threw an unhandled error:", errorMsg);
+            const formattedError = `I encountered an issue processing your request: The AI engine threw an error.`;
+            sendToken(formattedError);
+            await finish(formattedError);
           },
         });
       } else {

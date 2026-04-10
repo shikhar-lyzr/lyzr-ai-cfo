@@ -1,0 +1,12 @@
+Dept_Bucket,Quarter,Spend_In_USD,Allocated_Capital,Division
+Facebook Advertising,Q1,25000,18000,Marketing
+Google Search Ads,Q1,31000,28500,Marketing
+Content Writing Contractors,Q1,5000,6000,Marketing
+Server Infrastructure (AWS),Q1,62000,45000,TechOps
+Github Enterprise Seats,Q1,4500,4000,TechOps
+Executive Offsite,Q1,18000,12000,Leadership
+Employee Health Insurance,Q1,85000,85000,Human Resources
+Recruiting Agency Fees,Q1,34000,20000,Human Resources
+Unplanned Legal Defense,Q1,45000,5000,Legal
+Sales Commission Overrides,Q1,28000,22000,Sales
+CRM Subscription Upgrade,Q1,8500,6000,Sales
