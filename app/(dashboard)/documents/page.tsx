@@ -147,7 +147,12 @@ export default function DocumentsPage() {
 
         {/* Right panel — document viewer */}
         <div className="flex-1 min-w-0">
-          <DocumentViewer document={selectedDoc} isLoading={isLoadingDoc} />
+          <DocumentViewer
+              document={selectedDoc}
+              isLoading={isLoadingDoc}
+              onRegenerate={(type) => handleGenerate(type as "variance_report" | "ar_summary")}
+              isRegenerating={isGenerating}
+            />
         </div>
       </div>
     </div>
