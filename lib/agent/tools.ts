@@ -769,6 +769,210 @@ export function createFinancialTools(userId: string) {
     }
   );
 
+  const generateVarianceReport = tool(
+    "generate_variance_report",
+    "Gather all variance data for the agent to compose a Monthly Variance Report narrative. Returns records summary, top variances, category breakdown, and action counts by severity.",
+    {
+      type: "object",
+      properties: {
+        dataSourceId: {
+          type: "string",
+          description: "Optional data source ID. If omitted, uses all ready data sources.",
+        },
+      },
+      required: [],
+    },
+    async (args) => {
+      const dsWhere: Record<string, unknown> = { userId, status: "ready" };
+      if (args.dataSourceId) dsWhere.id = args.dataSourceId;
+
+      const [records, actions] = await Promise.all([
+        prisma.financialRecord.findMany({
+          where: { dataSource: dsWhere },
+          include: { dataSource: { select: { name: true } } },
+        }),
+        prisma.action.findMany({
+          where: {
+            userId,
+            type: "variance",
+            ...(args.dataSourceId ? { sourceDataSourceId: args.dataSourceId } : {}),
+          },
+          orderBy: { severity: "asc" },
+        }),
+      ]);
+
+      if (records.length === 0) {
+        return { text: "No financial records found to generate report.", details: {} };
+      }
+
+      const totalActual = records.reduce((s, r) => s + r.actual, 0);
+      const totalBudget = records.reduce((s, r) => s + r.budget, 0);
+      const totalVariance = totalActual - totalBudget;
+      const totalVariancePct = totalBudget > 0 ? (totalVariance / totalBudget) * 100 : 0;
+
+      const byCategory = new Map<string, { actual: number; budget: number; count: number }>();
+      for (const r of records) {
+        const existing = byCategory.get(r.category) ?? { actual: 0, budget: 0, count: 0 };
+        existing.actual += r.actual;
+        existing.budget += r.budget;
+        existing.count += 1;
+        byCategory.set(r.category, existing);
+      }
+      const categoryBreakdown = Array.from(byCategory.entries()).map(([cat, data]) => ({
+        category: cat,
+        actual: data.actual,
+        budget: data.budget,
+        variance: data.actual - data.budget,
+        variancePct: data.budget > 0 ? ((data.actual - data.budget) / data.budget * 100).toFixed(1) : "N/A",
+        lineItems: data.count,
+      }));
+
+      const critical = actions.filter((a) => a.severity === "critical");
+      const warning = actions.filter((a) => a.severity === "warning");
+      const info = actions.filter((a) => a.severity === "info");
+
+      const topVariances = actions
+        .slice(0, 10)
+        .map((a) => ({ headline: a.headline, detail: a.detail, driver: a.driver, severity: a.severity }));
+
+      return {
+        text: `Variance report data: ${records.length} records, ${actions.length} actions (${critical.length} critical, ${warning.length} warning, ${info.length} info). Total: $${(totalActual / 1000).toFixed(1)}K actual vs $${(totalBudget / 1000).toFixed(1)}K budget (${totalVariancePct.toFixed(1)}%).`,
+        details: {
+          totalRecords: records.length,
+          totalActual,
+          totalBudget,
+          totalVariance,
+          totalVariancePct,
+          actionCounts: { critical: critical.length, warning: warning.length, info: info.length },
+          categoryBreakdown,
+          topVariances,
+        },
+      };
+    }
+  );
+
+  const generateArSummary = tool(
+    "generate_ar_summary",
+    "Gather all AR/invoice data for the agent to compose an AR Aging Summary narrative. Returns total outstanding, aging buckets, dunning activity, and escalation candidates.",
+    {
+      type: "object",
+      properties: {
+        dataSourceId: {
+          type: "string",
+          description: "Optional data source ID. If omitted, uses all ready data sources.",
+        },
+      },
+      required: [],
+    },
+    async (args) => {
+      const dsWhere: Record<string, unknown> = { userId, status: "ready" };
+      if (args.dataSourceId) dsWhere.id = args.dataSourceId;
+
+      const [invoices, actions] = await Promise.all([
+        prisma.invoice.findMany({
+          where: { dataSource: dsWhere },
+          include: { dataSource: { select: { name: true } } },
+        }),
+        prisma.action.findMany({
+          where: {
+            userId,
+            type: "ar_followup",
+            ...(args.dataSourceId ? { sourceDataSourceId: args.dataSourceId } : {}),
+          },
+        }),
+      ]);
+
+      if (invoices.length === 0) {
+        return { text: "No invoices found to generate AR summary.", details: {} };
+      }
+
+      const now = new Date();
+      const totalOutstanding = invoices.filter((i) => i.status === "open").reduce((s, i) => s + i.amount, 0);
+
+      const buckets = { current: 0, days1to14: 0, days15to44: 0, days45plus: 0 };
+      const bucketAmounts = { current: 0, days1to14: 0, days15to44: 0, days45plus: 0 };
+      for (const inv of invoices.filter((i) => i.status === "open")) {
+        const daysOverdue = Math.floor((now.getTime() - inv.dueDate.getTime()) / 86400000);
+        if (daysOverdue < 1) { buckets.current++; bucketAmounts.current += inv.amount; }
+        else if (daysOverdue < 15) { buckets.days1to14++; bucketAmounts.days1to14 += inv.amount; }
+        else if (daysOverdue < 45) { buckets.days15to44++; bucketAmounts.days15to44 += inv.amount; }
+        else { buckets.days45plus++; bucketAmounts.days45plus += inv.amount; }
+      }
+
+      const sent = actions.filter((a) => a.status === "approved").length;
+      const snoozed = invoices.filter((i) => i.status === "snoozed").length;
+      const escalated = invoices.filter((i) => i.status === "escalated").length;
+      const pending = actions.filter((a) => a.status === "pending").length;
+
+      const escalationCandidates = invoices
+        .filter((i) => i.status === "open" && Math.floor((now.getTime() - i.dueDate.getTime()) / 86400000) >= 45)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5)
+        .map((i) => ({
+          invoiceNumber: i.invoiceNumber,
+          customer: i.customer,
+          amount: i.amount,
+          daysOverdue: Math.floor((now.getTime() - i.dueDate.getTime()) / 86400000),
+        }));
+
+      return {
+        text: `AR summary data: ${invoices.length} invoices, $${(totalOutstanding / 1000).toFixed(1)}K outstanding. ${sent} sent, ${snoozed} snoozed, ${escalated} escalated, ${pending} pending.`,
+        details: {
+          totalInvoices: invoices.length,
+          totalOutstanding,
+          buckets,
+          bucketAmounts,
+          activity: { sent, snoozed, escalated, pending },
+          escalationCandidates,
+        },
+      };
+    }
+  );
+
+  const saveDocument = tool(
+    "save_document",
+    "Save an agent-generated report as a Document. Call this after composing a variance report or AR summary narrative.",
+    {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["variance_report", "ar_summary"],
+          description: "Document type",
+        },
+        title: {
+          type: "string",
+          description: "Document title (e.g., 'Monthly Variance Report — April 2026')",
+        },
+        body: {
+          type: "string",
+          description: "Full markdown body of the document",
+        },
+        dataSourceId: {
+          type: "string",
+          description: "Data source that triggered this report (optional)",
+        },
+      },
+      required: ["type", "title", "body"],
+    },
+    async (args) => {
+      const doc = await prisma.document.create({
+        data: {
+          userId,
+          type: args.type,
+          title: args.title,
+          body: args.body,
+          ...(args.dataSourceId ? { dataSourceId: args.dataSourceId } : {}),
+        },
+      });
+
+      return {
+        text: `Document saved: "${doc.title}" (ID: ${doc.id})`,
+        details: { id: doc.id, title: doc.title, createdAt: doc.createdAt },
+      };
+    }
+  );
+
   return [
     searchRecords,
     analyzeFinancialData,
@@ -780,6 +984,9 @@ export function createFinancialTools(userId: string) {
     createArActions,
     draftDunningEmail,
     updateInvoiceStatus,
+    generateVarianceReport,
+    generateArSummary,
+    saveDocument,
   ];
 }
 
