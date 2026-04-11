@@ -3,6 +3,7 @@ export type Severity = "critical" | "warning" | "info";
 export type ActionStatus = "pending" | "flagged" | "dismissed" | "approved";
 export type DataSourceType = "csv" | "sheets";
 export type DataSourceStatus = "processing" | "ready" | "error";
+export type DocumentType = "variance_report" | "ar_summary";
 export type MessageRole = "user" | "agent";
 
 export interface Action {
@@ -39,6 +40,17 @@ export interface DataSource {
   recordCount: number;
   metadata?: Record<string, unknown>;
   createdAt: Date;
+}
+
+export interface Document {
+  id: string;
+  userId: string;
+  type: DocumentType;
+  title: string;
+  body: string;
+  dataSourceId?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface User {
