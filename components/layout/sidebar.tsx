@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { LayoutDashboard, Database, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Database, FileText, Settings, LogOut } from "lucide-react";
 import { clsx } from "clsx";
 
 const navItems = [
   { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/documents", label: "Documents", icon: FileText },
   { href: "/data-sources", label: "Data Sources", icon: Database },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
