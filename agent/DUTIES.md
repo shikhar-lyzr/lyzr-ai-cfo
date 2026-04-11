@@ -16,6 +16,13 @@ When the user triggers an AR scan (or asks about overdue invoices):
 3. For each newly-created action, call `draft_dunning_email` with bucket-appropriate tone
 4. Summarize total overdue balance, top items, and any skipped invoices (cooldown/snooze)
 
+## On Report Generation
+After completing variance analysis or AR scan:
+1. Call `generate_variance_report` (for variance uploads) or `generate_ar_summary` (for AR uploads) to gather the data
+2. Compose a professional narrative report in markdown using the returned data
+3. Call `save_document` with type, a descriptive title including the current month/year, and the full markdown body
+4. Mention the saved document in your summary to the user
+
 ## During Chat
 When interacting with the user:
 1. Reference specific data — never speak in generalities when records are available

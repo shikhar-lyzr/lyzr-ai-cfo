@@ -228,7 +228,8 @@ Execute this workflow using your tools:
    - warning: 10-20% variance  
    - info: 5-10% variance
 3. Include clear headlines, dollar-amount details, and identify the driver for each action
-4. After all actions are created, provide a brief executive summary of the findings
+4. After all actions are created, call generate_variance_report to gather summary data, then compose a professional Monthly Variance Report in markdown and call save_document to persist it
+5. Provide a brief executive summary of the findings and mention the generated report
 
 Do NOT skip any significant variances and DO NOT create actions individually. The user depends on you to catch everything above threshold using a single batch insertion.`;
 
@@ -276,9 +277,58 @@ Execute this workflow:
 1. Call scan_ar_aging with dataSourceId="${dataSourceId}"
 2. Compile eligible invoices into a single batch and call create_ar_actions
 3. For each newly-created action, call draft_dunning_email with the bucket-appropriate tone
-4. Provide a brief summary of total overdue balance and top three items
+4. Call generate_ar_summary to gather summary data, then compose a professional AR Aging Summary in markdown and call save_document to persist it
+5. Provide a brief summary of total overdue balance, top three items, and mention the generated report
 
 Do not create actions for invoices in cooldown or snoozed.`;
+
+  const result = query({
+    prompt,
+    dir: AGENT_DIR,
+    model: MODEL,
+    systemPromptSuffix: context,
+    tools,
+    replaceBuiltinTools: true,
+    maxTurns: 10,
+    constraints: { temperature: 0.3 },
+  });
+
+  let fullText = "";
+
+  for await (const msg of result) {
+    if (msg.type === "delta" && msg.deltaType === "text") {
+      fullText += msg.content;
+    } else if (msg.type === "assistant" && !fullText && msg.content) {
+      fullText = msg.content;
+    }
+  }
+
+  return fullText;
+}
+
+/**
+ * Run an agent query to generate a report on demand.
+ */
+export async function generateReport(
+  userId: string,
+  type: "variance_report" | "ar_summary"
+): Promise<string> {
+  ensureApiKey();
+
+  const context = await buildContext(userId);
+  const tools = createFinancialTools(userId);
+
+  const prompt = type === "variance_report"
+    ? `Generate a comprehensive Monthly Variance Report. Steps:
+1. Call generate_variance_report to gather all variance data across all data sources
+2. Compose a professional markdown report with: executive summary, top variances by impact, category breakdown, and recommended actions
+3. Call save_document with type="variance_report", a descriptive title including the current date, and the full markdown body
+4. Confirm the report was saved.`
+    : `Generate a comprehensive AR Aging Summary. Steps:
+1. Call generate_ar_summary to gather all AR/invoice data across all data sources
+2. Compose a professional markdown report with: total outstanding balance, aging bucket breakdown, recent dunning activity, escalation candidates, and recommended next steps
+3. Call save_document with type="ar_summary", a descriptive title including the current date, and the full markdown body
+4. Confirm the report was saved.`;
 
   const result = query({
     prompt,
