@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, AlertCircle, CheckCircle, Flag, MessageSquare, X, Copy, Clock, ArrowUpCircle } from "lucide-react";
+import { AlertTriangle, AlertCircle, CheckCircle, Flag, MessageSquare, X, Copy, Clock, ArrowUpCircle, History } from "lucide-react";
 import { clsx } from "clsx";
 import type { Action } from "@/lib/types";
 import { relativeTime, severityColor } from "@/lib/utils";
@@ -33,6 +33,32 @@ export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss, onAr
   const [expanded, setExpanded] = useState(false);
   const [draftBody, setDraftBody] = useState<string | null>(action.draftBody ?? null);
   const [loadingDraft, setLoadingDraft] = useState(false);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [events, setEvents] = useState<Array<{ id: string; fromStatus: string; toStatus: string; createdAt: string }>>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+
+  const toggleHistory = async () => {
+    if (showHistory) {
+      setShowHistory(false);
+      return;
+    }
+    if (events.length === 0) {
+      setLoadingEvents(true);
+      try {
+        const res = await fetch(`/api/actions/${action.id}/events`);
+        if (res.ok) {
+          const data = await res.json();
+          setEvents(data.events);
+        }
+      } catch {
+        // silent
+      } finally {
+        setLoadingEvents(false);
+      }
+    }
+    setShowHistory(true);
+  };
 
   const toggleDraft = async () => {
     if (expanded) {
@@ -203,6 +229,39 @@ export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss, onAr
           </span>
         )}
       </div>
+
+      {/* Audit trail */}
+      {action.status !== "pending" && (
+        <div className="mt-2 pt-2 border-t border-border">
+          <button
+            onClick={toggleHistory}
+            className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
+          >
+            <History className="w-3 h-3" />
+            {showHistory ? "Hide history" : "History"}
+          </button>
+          {showHistory && (
+            <ul className="mt-1.5 space-y-1">
+              {loadingEvents ? (
+                <li className="text-xs text-text-secondary">Loading...</li>
+              ) : events.length === 0 ? (
+                <li className="text-xs text-text-secondary">No history recorded.</li>
+              ) : (
+                events.map((e) => (
+                  <li key={e.id} className="text-xs text-text-secondary">
+                    <span className="font-medium">{e.fromStatus}</span>
+                    {" → "}
+                    <span className="font-medium">{e.toStatus}</span>
+                    <span className="ml-2 opacity-60">
+                      {relativeTime(new Date(e.createdAt))}
+                    </span>
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
