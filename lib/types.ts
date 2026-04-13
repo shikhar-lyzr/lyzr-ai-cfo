@@ -60,3 +60,16 @@ export interface User {
   name: string;
   credits: number;
 }
+
+export interface StatsData {
+  actions: { critical: number; warning: number; info: number; total: number };
+  ar: { info: number; warning: number; critical: number; total: number } | null;
+  topCategories: Array<{ category: string; variance: number; direction: "over" | "under" }>;
+}
+
+export interface BudgetChartData {
+  category: string;
+  actual: number;
+  budget: number;
+  variance: number;
+}
