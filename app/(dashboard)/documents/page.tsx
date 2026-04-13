@@ -29,6 +29,7 @@ export default function DocumentsPage() {
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -36,9 +37,12 @@ export default function DocumentsPage() {
       if (res.ok) {
         const data = await res.json();
         setDocuments(data.documents);
+        setError(null);
+      } else {
+        setError("Failed to load documents.");
       }
     } catch {
-      // silent
+      setError("Connection failed. Could not load documents.");
     } finally {
       setIsLoadingList(false);
     }
@@ -56,9 +60,12 @@ export default function DocumentsPage() {
       if (res.ok) {
         const data = await res.json();
         setSelectedDoc(data);
+        setError(null);
+      } else {
+        setError("Failed to load document.");
       }
     } catch {
-      // silent
+      setError("Connection failed. Could not load document.");
     } finally {
       setIsLoadingDoc(false);
     }
@@ -75,11 +82,14 @@ export default function DocumentsPage() {
       });
       if (res.ok) {
         const newDoc = await res.json();
+        setError(null);
         await fetchDocuments();
         await handleSelect(newDoc.id);
+      } else {
+        setError("Failed to generate document.");
       }
     } catch {
-      // silent
+      setError("Connection failed. Could not generate document.");
     } finally {
       setIsGenerating(false);
     }
@@ -127,6 +137,13 @@ export default function DocumentsPage() {
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="mx-6 mt-3 flex items-center justify-between gap-3 px-4 py-2.5 bg-danger/10 border border-danger/20 rounded-card text-sm text-danger">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="shrink-0 text-danger/60 hover:text-danger text-lg leading-none">&times;</button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex flex-1 min-h-0">
