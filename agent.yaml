@@ -1,0 +1,10 @@
+spec_version: "0.1.0"
+name: C:\Users\shikh\lyzr-ai-cfo
+version: 0.1.0
+description: Gitclaw agent for C:\Users\shikh\lyzr-ai-cfo
+model:
+  preferred: "lyzr:69d43ccef008dd037bad64d7@https://agent-prod.studio.lyzr.ai/v4"
+  fallback: []
+tools: [cli, read, write, memory]
+runtime:
+  max_turns: 50

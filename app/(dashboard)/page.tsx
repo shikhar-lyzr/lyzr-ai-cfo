@@ -55,6 +55,19 @@ export default function DashboardHome() {
     fetchDataSources();
   }, [fetchActions, fetchDataSources]);
 
+  // Poll for new actions for 60s after mount — catches background agent results
+  useEffect(() => {
+    if (!userId) return;
+    let polls = 0;
+    const maxPolls = 6;
+    const id = setInterval(() => {
+      polls++;
+      fetchActions();
+      if (polls >= maxPolls) clearInterval(id);
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [userId, fetchActions]);
+
   const handleFlag = async (id: string) => {
     if (!userId) return;
     const res = await fetch(`/api/actions/${id}`, {

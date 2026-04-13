@@ -14,9 +14,20 @@ interface MorningBriefingProps {
 }
 
 export function MorningBriefing({ userId, actions, dataSources, onComplete, onRefreshActions }: MorningBriefingProps) {
-  const [briefing, setBriefing] = useState<string>("");
+  const cacheKey = `briefing_${userId}`;
+  const [briefing, setBriefing] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem(cacheKey) || "";
+    }
+    return "";
+  });
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(() => {
+    if (typeof window !== "undefined") {
+      return !!sessionStorage.getItem(cacheKey);
+    }
+    return false;
+  });
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isScanningAr, setIsScanningAr] = useState(false);
@@ -92,6 +103,7 @@ export function MorningBriefing({ userId, actions, dataSources, onComplete, onRe
       }
 
       setIsLoaded(true);
+      sessionStorage.setItem(cacheKey, content);
       onComplete?.();
     } catch {
       setError("Connection failed. Try refreshing.");

@@ -60,8 +60,12 @@ export default function DataSourcesPage() {
           result.mappingSource === "llm"
             ? " (columns mapped by AI — non-standard headers detected)"
             : "";
+        const analysisNote =
+          result.analysisStatus === "processing"
+            ? " AI is analyzing in the background — actions will appear on the dashboard shortly."
+            : ` Generated ${result.actionsGenerated} actions.`;
         setUploadResult(
-          `✓ Processed ${result.dataSource.recordCount} records, generated ${result.actionsGenerated} variance actions.${mappingNote} Redirecting to dashboard...`
+          `✓ Processed ${result.dataSource.recordCount} records.${analysisNote}${mappingNote} Redirecting to dashboard...`
         );
         fetchSources();
         // Redirect to dashboard after a short delay so user sees the success message

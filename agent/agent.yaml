@@ -8,10 +8,17 @@ model:
 tools:
   - search_records
   - analyze_financial_data
-  - create_action
+  - create_actions
   - update_action
   - generate_commentary
   - draft_email
+  - scan_ar_aging
+  - create_ar_actions
+  - draft_dunning_email
+  - update_invoice_status
+  - generate_variance_report
+  - generate_ar_summary
+  - save_document
 
 settings:
   replace_builtin_tools: true

@@ -163,21 +163,11 @@ async function handleArUpload(
     },
   });
 
-  let agentAnalysis: string | null = null;
-  try {
-    agentAnalysis = await analyzeArUpload(
-      userId,
-      dataSource.id,
-      fileName,
-      invoiceCount
-    );
-  } catch (err) {
-    console.error("[upload] AR agent analysis failed:", err);
-  }
-
-  const actionCount = await prisma.action.count({
-    where: { userId, sourceDataSourceId: dataSource.id },
-  });
+  // Fire-and-forget: run agent analysis in background so the upload response returns immediately
+  console.log("[upload] Starting background AR agent analysis for", dataSource.id);
+  analyzeArUpload(userId, dataSource.id, fileName, invoiceCount)
+    .then((result) => console.log("[upload] AR agent completed:", result?.slice(0, 200)))
+    .catch((err) => console.error("[upload] AR agent analysis failed:", err));
 
   return NextResponse.json({
     dataSource: {
@@ -186,8 +176,8 @@ async function handleArUpload(
       recordCount: invoiceCount,
     },
     shape: "ar",
-    actionsGenerated: actionCount,
-    agentAnalysis,
+    actionsGenerated: 0,
+    analysisStatus: "processing",
     ...(parseResult.skipped.length > 0 ? { skippedRows: parseResult.skipped.length } : {}),
   });
 }
@@ -263,37 +253,11 @@ async function handleVarianceUpload(
     },
   });
 
-  let agentAnalysis: string | null = null;
-  try {
-    agentAnalysis = await analyzeUpload(
-      userId,
-      dataSource.id,
-      fileName,
-      parsedRows.length
-    );
-  } catch (err) {
-    console.error("[upload] agent analysis failed:", err);
-    const fallbackCount = await prisma.action.count({
-      where: { userId, sourceDataSourceId: dataSource.id },
-    });
-    return NextResponse.json({
-      dataSource: {
-        id: dataSource.id,
-        name: dataSource.name,
-        recordCount: parsedRows.length,
-      },
-      shape: "variance",
-      actionsGenerated: fallbackCount,
-      agentAnalysis: null,
-      mapping,
-      mappingSource,
-      warning: "AI analysis failed — data saved but actions may be incomplete",
-    });
-  }
-
-  const finalActionCount = await prisma.action.count({
-    where: { userId, sourceDataSourceId: dataSource.id },
-  });
+  // Fire-and-forget: run agent analysis in background so the upload response returns immediately
+  console.log("[upload] Starting background variance agent analysis for", dataSource.id);
+  analyzeUpload(userId, dataSource.id, fileName, parsedRows.length)
+    .then((result) => console.log("[upload] Variance agent completed:", result?.slice(0, 200)))
+    .catch((err) => console.error("[upload] Variance agent analysis failed:", err));
 
   return NextResponse.json({
     dataSource: {
@@ -302,8 +266,8 @@ async function handleVarianceUpload(
       recordCount: parsedRows.length,
     },
     shape: "variance",
-    actionsGenerated: finalActionCount,
-    agentAnalysis,
+    actionsGenerated: 0,
+    analysisStatus: "processing",
     mapping,
     mappingSource,
   });

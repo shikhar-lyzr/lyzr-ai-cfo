@@ -55,10 +55,10 @@ export function UploadArea({ onUpload, isUploading = false }: UploadAreaProps) {
         className="hidden"
       />
       {isUploading ? (
-        <>
+        <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-text-secondary">Processing file...</p>
-        </>
+        </div>
       ) : (
         <>
           <div className="w-12 h-12 rounded-full bg-accent-primary/10 flex items-center justify-center">

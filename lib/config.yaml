@@ -1,0 +1,6 @@
+model_list:
+  - model_name: claude-3-5-sonnet-20241022  # The model Claude Code is looking for
+    litellm_params:
+      model: openai/69d43ccef008dd037bad64d7 # Your Lyzr Agent ID
+      api_base: https://agent-prod.studio.lyzr.ai/v4
+      api_key: 69d43ccef008dd037bad64d7          # Use a FRESHLY generated key

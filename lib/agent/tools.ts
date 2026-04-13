@@ -549,9 +549,9 @@ export function createFinancialTools(userId: string) {
 
       const lines = [
         `**AR Aging Scan:** ${info.length + warning.length + critical.length} overdue invoices ($${(totalOverdue / 1000).toFixed(1)}K total)`,
-        critical.length > 0 ? `\n**Critical (45+ days):** ${critical.map((i) => `${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
-        warning.length > 0 ? `\n**Warning (15-44 days):** ${warning.map((i) => `${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
-        info.length > 0 ? `\n**Info (1-14 days):** ${info.map((i) => `${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
+        critical.length > 0 ? `\n**Critical (45+ days):** ${critical.map((i) => `[id=${i.id}] ${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
+        warning.length > 0 ? `\n**Warning (15-44 days):** ${warning.map((i) => `[id=${i.id}] ${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
+        info.length > 0 ? `\n**Info (1-14 days):** ${info.map((i) => `[id=${i.id}] ${i.invoiceNumber} — ${i.customer} $${(i.amount / 1000).toFixed(1)}K (${i.daysOverdue}d)`).join("; ")}` : "",
         skipped.length > 0 ? `\n**Skipped:** ${skipped.join("; ")}` : "",
       ].filter(Boolean).join("");
 
@@ -574,7 +574,7 @@ export function createFinancialTools(userId: string) {
           items: {
             type: "object",
             properties: {
-              invoiceId: { type: "string" },
+              invoiceId: { type: "string", description: "The invoice's database ID (cuid from scan_ar_aging results, NOT the invoice number)" },
               severity: {
                 type: "string",
                 enum: ["critical", "warning", "info"],
@@ -591,18 +591,71 @@ export function createFinancialTools(userId: string) {
       required: ["actions"],
     },
     async (args) => {
-      type ArToolAction = {
+      // The agent may send extra/missing fields — normalize to our schema
+      const rawItems = (args.actions as Record<string, unknown>[]) || [];
+      if (rawItems.length === 0) {
+        return { text: "No AR actions provided." };
+      }
+
+      // Resolve invoiceIds and normalize each item
+      const items: Array<{
         invoiceId: string;
         severity: string;
         headline: string;
         detail: string;
         driver: string;
         dataSourceId: string;
-      };
+      }> = [];
 
-      const items = (args.actions as ArToolAction[]) || [];
+      for (const raw of rawItems) {
+        let invoiceId = String(raw.invoiceId || "");
+
+        // Resolve invoice number to database ID if needed
+        const invoiceSelect = { id: true, invoiceNumber: true, customer: true, amount: true, dataSourceId: true, dueDate: true } as const;
+        const directMatch = invoiceId ? await prisma.invoice.findUnique({
+          where: { id: invoiceId },
+          select: invoiceSelect,
+        }) : null;
+
+        let invoice = directMatch;
+        if (!invoice) {
+          // Try by invoice number, scoped to this user's data sources
+          invoice = await prisma.invoice.findFirst({
+            where: {
+              invoiceNumber: invoiceId,
+              dataSource: { userId },
+            },
+            orderBy: { createdAt: "desc" },
+            select: invoiceSelect,
+          });
+          if (invoice) invoiceId = invoice.id;
+        }
+
+        if (!invoice) continue; // Skip unresolvable invoices
+
+        // Build normalized action with fallbacks for missing fields
+        const customer = String(raw.customer || invoice.customer || "Unknown");
+        const amount = Number(raw.amount ?? invoice.amount ?? 0);
+
+        // Compute severity from overdue days if agent didn't provide it
+        let severity = raw.severity ? String(raw.severity).toLowerCase() : "";
+        if (!severity || !["critical", "warning", "info"].includes(severity)) {
+          const daysOverdue = Math.floor((Date.now() - invoice.dueDate.getTime()) / 86400000);
+          severity = daysOverdue >= 45 ? "critical" : daysOverdue >= 15 ? "warning" : "info";
+        }
+
+        items.push({
+          invoiceId: invoice.id,
+          severity,
+          headline: String(raw.headline || `AR Follow-up: ${invoice.invoiceNumber} — ${customer} $${(amount / 1000).toFixed(1)}K`),
+          detail: String(raw.detail || `Overdue invoice ${invoice.invoiceNumber} from ${customer} for $${amount.toLocaleString()}`),
+          driver: String(raw.driver || `Overdue invoice from ${customer}`),
+          dataSourceId: String(raw.dataSourceId || invoice.dataSourceId),
+        });
+      }
+
       if (items.length === 0) {
-        return { text: "No AR actions provided." };
+        return { text: "No valid AR actions — could not resolve any invoice IDs." };
       }
 
       // Dedupe by (invoiceId, status=pending)
@@ -623,22 +676,31 @@ export function createFinancialTools(userId: string) {
         return { text: `All ${items.length} AR actions already exist (deduplicated by invoiceId).` };
       }
 
-      await prisma.action.createMany({
-        data: newActions.map((a) => ({
-          userId,
-          type: "ar_followup",
-          severity: a.severity,
-          headline: a.headline,
-          detail: a.detail,
-          driver: a.driver,
-          sourceDataSourceId: a.dataSourceId,
-          invoiceId: a.invoiceId,
-        })),
-      });
+      // Insert one by one to handle partial failures gracefully
+      let created = 0;
+      for (const a of newActions) {
+        try {
+          await prisma.action.create({
+            data: {
+              userId,
+              type: "ar_followup",
+              severity: a.severity,
+              headline: a.headline,
+              detail: a.detail,
+              driver: a.driver,
+              sourceDataSourceId: a.dataSourceId,
+              invoiceId: a.invoiceId,
+            },
+          });
+          created++;
+        } catch (err) {
+          console.error(`[create_ar_actions] Failed for invoice ${a.invoiceId}:`, err instanceof Error ? err.message : err);
+        }
+      }
 
       return {
-        text: `Created ${newActions.length} AR follow-up actions. (${existingInvoiceIds.size} skipped as duplicates)`,
-        details: { created: newActions.length, skipped: existingInvoiceIds.size },
+        text: `Created ${created} AR follow-up actions. (${existingInvoiceIds.size} skipped as duplicates)`,
+        details: { created, skipped: existingInvoiceIds.size },
       };
     }
   );
