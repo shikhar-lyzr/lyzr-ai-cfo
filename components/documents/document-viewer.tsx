@@ -1,6 +1,7 @@
 "use client";
 
 import { FileText, RefreshCw } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface DocumentViewerProps {
   document: {
@@ -62,16 +63,8 @@ export function DocumentViewer({ document, isLoading, onRegenerate, isRegenerati
             minute: "2-digit",
           })}
         </p>
-        <div className="prose prose-sm max-w-none text-text-primary">
-          {document.body.split("\n").map((line, i) => {
-            if (line.startsWith("# ")) return <h1 key={i} className="text-lg font-bold mt-4 mb-2">{line.slice(2)}</h1>;
-            if (line.startsWith("## ")) return <h2 key={i} className="text-base font-semibold mt-3 mb-1.5">{line.slice(3)}</h2>;
-            if (line.startsWith("### ")) return <h3 key={i} className="text-sm font-semibold mt-2 mb-1">{line.slice(4)}</h3>;
-            if (line.startsWith("**") && line.endsWith("**")) return <p key={i} className="font-semibold mt-2">{line.slice(2, -2)}</p>;
-            if (line.startsWith("- ")) return <li key={i} className="ml-4 text-sm leading-relaxed">{line.slice(2)}</li>;
-            if (line.trim() === "") return <div key={i} className="h-2" />;
-            return <p key={i} className="text-sm leading-relaxed">{line}</p>;
-          })}
+        <div className="doc-body max-w-none">
+          <ReactMarkdown>{document.body}</ReactMarkdown>
         </div>
       </div>
     </div>

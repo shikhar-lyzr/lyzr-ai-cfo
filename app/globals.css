@@ -39,3 +39,18 @@
   --radius-btn: 6px;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
+
+@layer components {
+  .doc-body h1 { @apply text-lg font-bold mt-4 mb-2 text-text-primary; }
+  .doc-body h2 { @apply text-base font-semibold mt-3 mb-1.5 text-text-primary; }
+  .doc-body h3 { @apply text-sm font-semibold mt-2 mb-1 text-text-primary; }
+  .doc-body p  { @apply text-sm leading-relaxed text-text-primary mt-1; }
+  .doc-body ul { @apply list-disc ml-5 space-y-0.5 text-sm text-text-primary; }
+  .doc-body ol { @apply list-decimal ml-5 space-y-0.5 text-sm text-text-primary; }
+  .doc-body li { @apply leading-relaxed; }
+  .doc-body strong { @apply font-semibold; }
+  .doc-body code { @apply font-mono text-xs bg-border/30 px-1 py-0.5 rounded; }
+  .doc-body pre  { @apply bg-border/30 rounded-card p-3 overflow-x-auto text-xs; }
+  .doc-body blockquote { @apply border-l-4 border-border pl-4 italic text-text-secondary; }
+  .doc-body a { @apply text-accent-primary underline; }
+}
