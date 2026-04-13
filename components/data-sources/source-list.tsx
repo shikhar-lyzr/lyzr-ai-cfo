@@ -1,10 +1,14 @@
-import { FileSpreadsheet, Sheet, CheckCircle, Loader2, AlertCircle } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { FileSpreadsheet, Sheet, CheckCircle, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { clsx } from "clsx";
 import type { DataSource } from "@/lib/types";
 import { relativeTime } from "@/lib/utils";
 
 interface SourceListProps {
   sources: DataSource[];
+  onReanalyze?: (id: string) => Promise<void>;
 }
 
 const statusConfig = {
@@ -18,11 +22,27 @@ const typeIcons = {
   sheets: Sheet,
 };
 
-export function SourceList({ sources }: SourceListProps) {
+export function SourceList({ sources, onReanalyze }: SourceListProps) {
+  const [reanalyzingIds, setReanalyzingIds] = useState<Set<string>>(new Set());
+
+  const handleReanalyze = async (id: string) => {
+    if (!onReanalyze) return;
+    setReanalyzingIds((prev) => new Set(prev).add(id));
+    try {
+      await onReanalyze(id);
+    } finally {
+      setReanalyzingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   if (sources.length === 0) {
     return (
       <div className="text-center py-8 text-text-secondary text-sm">
-        No data sources connected yet. Upload a CSV to get started.
+        No data sources connected yet. Upload a CSV or link a Google Sheet to get started.
       </div>
     );
   }
@@ -33,6 +53,7 @@ export function SourceList({ sources }: SourceListProps) {
         const TypeIcon = typeIcons[source.type] ?? FileSpreadsheet;
         const status = statusConfig[source.status] ?? statusConfig.error;
         const StatusIcon = status.icon;
+        const isReanalyzing = reanalyzingIds.has(source.id);
 
         return (
           <div
@@ -55,6 +76,16 @@ export function SourceList({ sources }: SourceListProps) {
               <StatusIcon className="w-4 h-4" />
               {status.label}
             </div>
+            {onReanalyze && source.status === "ready" && (
+              <button
+                onClick={() => handleReanalyze(source.id)}
+                disabled={isReanalyzing}
+                title="Re-analyze this data source"
+                className="p-1.5 text-text-secondary hover:text-accent-primary rounded-btn hover:bg-accent-primary/10 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={clsx("w-4 h-4", isReanalyzing && "animate-spin")} />
+              </button>
+            )}
           </div>
         );
       })}
