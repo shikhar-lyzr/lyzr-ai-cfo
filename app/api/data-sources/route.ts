@@ -14,5 +14,16 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(sources);
+  const shape = searchParams.get("shape");
+  const filtered = shape
+    ? sources.filter((s) => {
+        try {
+          return JSON.parse(s.metadata ?? "{}").shape === shape;
+        } catch {
+          return false;
+        }
+      })
+    : sources;
+
+  return NextResponse.json(filtered);
 }
