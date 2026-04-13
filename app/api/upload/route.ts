@@ -4,52 +4,7 @@ import { analyzeUpload, analyzeArUpload } from "@/lib/agent";
 import { inferColumnMapping } from "@/lib/csv/llm-mapper";
 import { detectCsvShape } from "@/lib/csv/detect-shape";
 import { parseArCsv } from "@/lib/csv/ar-parser";
-
-interface ParsedRow {
-  account: string;
-  period: string;
-  actual: number;
-  budget: number;
-  category: string;
-}
-
-function parseCSV(text: string): { headers: string[]; rows: string[][] } {
-  const lines = text.trim().split("\n");
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  const rows = lines.slice(1).map((line) => line.split(",").map((cell) => cell.trim()));
-  return { headers, rows };
-}
-
-function autoDetectColumns(headers: string[]): Record<string, number> {
-  const mapping: Record<string, number> = {};
-
-  for (let i = 0; i < headers.length; i++) {
-    const h = headers[i];
-    if (/account|name|description|line.?item|gl/i.test(h)) mapping.account = i;
-    else if (/period|month|date|quarter/i.test(h)) mapping.period = i;
-    else if (/actual|spent|real/i.test(h)) mapping.actual = i;
-    else if (/budget|plan|forecast|target/i.test(h)) mapping.budget = i;
-    else if (/category|type|class|dept|department/i.test(h)) mapping.category = i;
-  }
-
-  return mapping;
-}
-
-function parseRows(
-  rows: string[][],
-  mapping: Record<string, number>
-): ParsedRow[] {
-  return rows
-    .filter((row) => row.length > Math.max(...Object.values(mapping)))
-    .map((row) => ({
-      account: row[mapping.account] ?? "Unknown",
-      period: row[mapping.period] ?? "Unknown",
-      actual: parseFloat(row[mapping.actual]) || 0,
-      budget: parseFloat(row[mapping.budget]) || 0,
-      category: row[mapping.category] ?? "General",
-    }))
-    .filter((r) => r.account !== "Unknown" && (r.actual > 0 || r.budget > 0));
-}
+import { parseCSV, autoDetectColumns, parseRows } from "@/lib/csv/variance-parser";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
