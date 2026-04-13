@@ -407,12 +407,106 @@ px-3 h-[52px] cursor-pointer hover:border-accent-primary/40 transition-all group
 
 ---
 
+## Group D: Budget vs Actual Chart + Briefing-in-Chat
+
+### Overview
+
+Replace the `MorningBriefing` component in the right panel with a **Budget vs Actual bar chart** (Recharts). The briefing text is surfaced as the first auto-loaded message in the chat panel instead.
+
+Right panel layout change:
+```
+Before:  [ MorningBriefing ]  [ ChatPanel (flex-1) ]
+After:   [ BudgetChart ]      [ ChatPanel (flex-1) ]
+                                 └─ briefing as first message on load
+```
+
+### D1 — Budget vs Actual API endpoint
+
+**File:** `app/api/chart/budget-vs-actual/route.ts` (new)
+
+`GET /api/chart/budget-vs-actual` — reads userId from session via `getSession()`.
+
+Query: `prisma.financialRecord.findMany({ where: { dataSource: { userId } }, select: { category, actual, budget } })`
+
+Group by `category` JS-side, sum `actual` and `budget` per category. Sort by `budget` descending. Return top 8 categories (avoids chart overflow).
+
+Response shape:
+```ts
+Array<{ category: string; actual: number; budget: number; variance: number }>
+```
+
+Add `BudgetChartData` type to `lib/types.ts`.
+
+### D2 — BudgetChart component
+
+**File:** `components/dashboard/budget-chart.tsx` (new)
+
+Install `recharts`. Uses `<ResponsiveContainer>`, `<BarChart>`, `<Bar>`, `<XAxis>`, `<YAxis>`, `<Tooltip>`, `<Legend>` from recharts.
+
+Props: none (fetches its own data from `/api/chart/budget-vs-actual`)
+
+State: `data: BudgetChartData[]`, `isLoading: boolean`
+
+Layout: `bg-bg-card rounded-xl border border-border/60 shadow-[0_2px_12px_rgba(0,0,0,0.02)] p-4 shrink-0`
+
+Chart details:
+- Two bars per category: `actual` (color: `var(--accent-primary)`) and `budget` (color: `var(--border)` / muted)
+- `XAxis`: category names, `tick={{ fontSize: 10 }}`, `angle={-30}`, `textAnchor="end"`
+- `YAxis`: compact number formatting (e.g. `$12k`)
+- `Tooltip`: custom formatter showing `$` values with variance delta
+- `Legend`: small, bottom-aligned
+- Height: `220px` inside `ResponsiveContainer`
+- Empty state: "No financial data yet" centered text when `data.length === 0`
+- Loading state: spinner
+
+### D3 — Briefing auto-loads as first chat message
+
+**File:** `app/(dashboard)/page.tsx`
+
+The existing `MorningBriefing` component streams from `/api/chat` with a fixed prompt and caches the result in `sessionStorage` under key `briefing_{userId}`. We replicate this behaviour directly in the dashboard page so the briefing appears as the first message in the chat panel.
+
+Implementation:
+1. After `userId` is set, check `sessionStorage.getItem(`briefing_${userId}`)`:
+   - **Cache hit**: inject cached text as a synthetic agent message immediately:
+     ```ts
+     setMessages([{
+       id: "briefing_initial",
+       userId,
+       role: "agent",
+       content: cached,
+       timestamp: new Date(),
+     }]);
+     ```
+   - **Cache miss**: stream from `/api/chat` using the existing `handleSendMessage` streaming infrastructure, with the briefing prompt:
+     ```
+     "Give me my morning briefing. Summarize my current financial position, list items needing attention by priority, and highlight anything that changed since last review. Be concise and executive-level."
+     ```
+     On completion, write the full content to `sessionStorage.setItem(`briefing_${userId}`, content)`.
+2. Remove `<MorningBriefing>` from the right panel JSX entirely.
+3. Remove `dataSources` state and `fetchDataSources` — these were only needed by `MorningBriefing`.
+
+### D4 — Wire into dashboard page
+
+**File:** `app/(dashboard)/page.tsx`
+
+- Remove `MorningBriefing` import and usage
+- Remove `dataSources` state and `fetchDataSources` (only needed by briefing component)
+- Add `<BudgetChart />` in the right panel where briefing was:
+  ```tsx
+  <div className="shrink-0">
+    <BudgetChart />
+  </div>
+  ```
+- Add briefing fetch on mount (D3 above)
+
+---
+
 ## Execution Order
 
 | Step | File(s) | Notes |
 |------|---------|-------|
-| 1 | `npm install react-markdown` | First |
-| 2 | `app/globals.css` | Add `.doc-body` styles |
+| 1 | `npm install react-markdown recharts` | Install both upfront |
+| 2 | `app/globals.css` | A1 — add `.doc-body` styles |
 | 3 | `components/documents/document-viewer.tsx` | A1 — replace manual render |
 | 4 | `app/(dashboard)/documents/page.tsx` | A2+A3 — error banners + race fix |
 | 5 | `lib/csv/variance-parser.ts` | B2 — extract shared CSV helpers |
@@ -423,13 +517,15 @@ px-3 h-[52px] cursor-pointer hover:border-accent-primary/40 transition-all group
 | 10 | `components/data-sources/link-sheet-area.tsx` | B5 — new component |
 | 11 | `components/data-sources/source-list.tsx` | B7 — re-analyze button |
 | 12 | `app/(dashboard)/data-sources/page.tsx` | B6 — tabbed page |
-| 13 | `lib/types.ts` | C1 — add StatsData type |
+| 13 | `lib/types.ts` | C1+D1 — add StatsData + BudgetChartData types |
 | 14 | `app/api/stats/route.ts` | C1 — stats endpoint |
-| 15 | `components/feed/stats-strip.tsx` | C2 — stats strip |
-| 16 | `components/feed/action-modal.tsx` | C3 — slide-over modal |
-| 17 | `components/feed/action-card.tsx` | C4 — compact row rewrite |
-| 18 | `components/feed/action-feed.tsx` | C5 — wire stats + selection |
-| 19 | `app/(dashboard)/page.tsx` | C5 — pass userId |
+| 15 | `app/api/chart/budget-vs-actual/route.ts` | D1 — chart data endpoint |
+| 16 | `components/feed/stats-strip.tsx` | C2 — stats strip |
+| 17 | `components/feed/action-modal.tsx` | C3 — slide-over modal |
+| 18 | `components/feed/action-card.tsx` | C4 — compact row rewrite |
+| 19 | `components/feed/action-feed.tsx` | C5 — wire stats + selection |
+| 20 | `components/dashboard/budget-chart.tsx` | D2 — chart component |
+| 21 | `app/(dashboard)/page.tsx` | C5+D3+D4 — userId, chart, briefing-in-chat |
 
 ---
 
@@ -447,11 +543,13 @@ px-3 h-[52px] cursor-pointer hover:border-accent-primary/40 transition-all group
 - [ ] AR modal: draft auto-loads on open. Copy & Mark Sent / Snooze / Escalate work inside modal.
 - [ ] Variance modal: Approve / Flag / Ask AI / Dismiss work inside modal.
 - [ ] History toggle works inside modal for resolved cards.
+- [ ] Budget vs Actual chart: two bars per category, renders top 8 categories, empty state when no data.
+- [ ] Briefing appears as first message in chat on dashboard load. MorningBriefing component is gone from right panel.
 - [ ] No regressions: existing upload flow, chat, documents generation still work.
 
 ---
 
 ## Deferred
 
-- **Group D — Daily Scheduler**: proactive agent cron, Inngest integration, `lastScannedAt` on User model
-- **Group E — Cash Anomaly Detection**: `detect_cash_anomalies` tool, new action type, filter bar chip
+- **Daily Scheduler**: proactive agent cron, Inngest integration, `lastScannedAt` on User model
+- **Cash Anomaly Detection**: `detect_cash_anomalies` tool, new action type, filter bar chip
