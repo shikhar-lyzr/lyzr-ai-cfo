@@ -2,16 +2,22 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { clsx } from "clsx";
 import { UploadArea } from "@/components/data-sources/upload-area";
+import { LinkSheetArea } from "@/components/data-sources/link-sheet-area";
 import { SourceList } from "@/components/data-sources/source-list";
 import type { DataSource } from "@/lib/types";
+
+type TabShape = "variance" | "ar";
 
 export default function DataSourcesPage() {
   const router = useRouter();
   const [sources, setSources] = useState<DataSource[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isLinking, setIsLinking] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabShape>("variance");
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -39,6 +45,15 @@ export default function DataSourcesPage() {
     fetchSources();
   }, [fetchSources]);
 
+  const filteredSources = sources.filter((s) => {
+    try {
+      const meta = typeof s.metadata === "string" ? JSON.parse(s.metadata) : s.metadata;
+      return meta?.shape === activeTab;
+    } catch {
+      return false;
+    }
+  });
+
   const handleUpload = async (file: File) => {
     if (!userId) return;
     setIsUploading(true);
@@ -65,13 +80,10 @@ export default function DataSourcesPage() {
             ? " AI is analyzing in the background — actions will appear on the dashboard shortly."
             : ` Generated ${result.actionsGenerated} actions.`;
         setUploadResult(
-          `✓ Processed ${result.dataSource.recordCount} records.${analysisNote}${mappingNote} Redirecting to dashboard...`
+          `Processed ${result.dataSource.recordCount} records.${analysisNote}${mappingNote} Redirecting to dashboard...`
         );
         fetchSources();
-        // Redirect to dashboard after a short delay so user sees the success message
-        setTimeout(() => {
-          router.push("/");
-        }, 1500);
+        setTimeout(() => router.push("/"), 1500);
       } else {
         const err = await res.json();
         setUploadResult(`Error: ${err.error}`);
@@ -81,6 +93,38 @@ export default function DataSourcesPage() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleLink = async (url: string) => {
+    setIsLinking(true);
+    setUploadResult(null);
+    try {
+      const res = await fetch("/api/data-sources/link-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, shape: activeTab }),
+      });
+      if (res.ok) {
+        setUploadResult("Sheet connected. AI is analyzing in the background...");
+        fetchSources();
+        setTimeout(() => router.push("/"), 1500);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setUploadResult(
+          `Error: ${(data as { error?: string }).error ?? "Failed to connect sheet"}`
+        );
+      }
+    } catch {
+      setUploadResult("Connection failed. Please try again.");
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleReanalyze = async (id: string) => {
+    await fetch(`/api/data-sources/${id}/reanalyze`, { method: "POST" });
+    fetchSources();
+    setTimeout(() => router.push("/"), 1000);
   };
 
   return (
@@ -93,7 +137,32 @@ export default function DataSourcesPage() {
           </p>
         </div>
 
-        <UploadArea onUpload={handleUpload} isUploading={isUploading} />
+        {/* Tabs */}
+        <div className="flex border-b border-border">
+          {(["variance", "ar"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setActiveTab(tab);
+                setUploadResult(null);
+              }}
+              className={clsx(
+                "px-5 py-3 text-sm font-medium border-b-2 transition-colors",
+                activeTab === tab
+                  ? "border-accent-primary text-accent-primary"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
+              )}
+            >
+              {tab === "variance" ? "Variance / P&L" : "AR / Invoices"}
+            </button>
+          ))}
+        </div>
+
+        {/* Upload + Link areas */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <UploadArea onUpload={handleUpload} isUploading={isUploading} />
+          <LinkSheetArea shape={activeTab} onLink={handleLink} isLinking={isLinking} />
+        </div>
 
         {uploadResult && (
           <div
@@ -111,7 +180,7 @@ export default function DataSourcesPage() {
           <h2 className="text-sm font-semibold text-text-primary mb-3">
             Connected Sources
           </h2>
-          <SourceList sources={sources} />
+          <SourceList sources={filteredSources} onReanalyze={handleReanalyze} />
         </div>
       </div>
     </div>
