@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, AlertCircle, CheckCircle, Flag, MessageSquare, X, Copy, Clock, ArrowUpCircle, History } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { clsx } from "clsx";
 import type { Action } from "@/lib/types";
-import { relativeTime, severityColor } from "@/lib/utils";
+import { relativeTime } from "@/lib/utils";
+import { ActionModal } from "@/components/feed/action-modal";
 
 interface ActionCardProps {
   action: Action;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  onClose: () => void;
   onFlag?: (id: string) => void;
   onApprove?: (id: string) => void;
   onAskAI?: (id: string) => void;
@@ -15,253 +18,84 @@ interface ActionCardProps {
   onArOp?: (id: string, op: "mark_sent" | "snooze" | "escalate") => void;
 }
 
-const severityIcons = {
-  critical: AlertTriangle,
-  warning: AlertCircle,
-  info: CheckCircle,
+const severityDotColor: Record<string, string> = {
+  critical: "bg-danger",
+  warning: "bg-warning",
+  info: "bg-success",
 };
 
-const severityLabels = {
-  critical: "Critical",
-  warning: "Warning",
-  info: "Info",
+const statusLabels: Record<string, string> = {
+  flagged: "Flagged",
+  dismissed: "Dismissed",
+  approved: "Approved",
 };
 
-export function ActionCard({ action, onFlag, onApprove, onAskAI, onDismiss, onArOp }: ActionCardProps) {
-  const Icon = severityIcons[action.severity] ?? AlertCircle;
-  const isAr = action.type === "ar_followup";
-  const [expanded, setExpanded] = useState(false);
-  const [draftBody, setDraftBody] = useState<string | null>(action.draftBody ?? null);
-  const [loadingDraft, setLoadingDraft] = useState(false);
-
-  const [showHistory, setShowHistory] = useState(false);
-  const [events, setEvents] = useState<Array<{ id: string; fromStatus: string; toStatus: string; createdAt: string }>>([]);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-
-  const toggleHistory = async () => {
-    if (showHistory) {
-      setShowHistory(false);
-      return;
-    }
-    if (events.length === 0) {
-      setLoadingEvents(true);
-      try {
-        const res = await fetch(`/api/actions/${action.id}/events`);
-        if (res.ok) {
-          const data = await res.json();
-          setEvents(data.events);
-        }
-      } catch {
-        // silent
-      } finally {
-        setLoadingEvents(false);
-      }
-    }
-    setShowHistory(true);
-  };
-
-  const toggleDraft = async () => {
-    if (expanded) {
-      setExpanded(false);
-      return;
-    }
-
-    // Lazy-load draftBody if not cached
-    if (!draftBody) {
-      setLoadingDraft(true);
-      try {
-        const res = await fetch(`/api/actions/${action.id}/ar`);
-        if (res.ok) {
-          const data = await res.json();
-          setDraftBody(data.draftBody);
-        }
-      } catch {
-        // silent — user can retry
-      } finally {
-        setLoadingDraft(false);
-      }
-    }
-
-    setExpanded(true);
-  };
-
-  const handleCopyAndSend = async () => {
-    if (draftBody) {
-      await navigator.clipboard.writeText(draftBody);
-    }
-    onArOp?.(action.id, "mark_sent");
-  };
-
+export function ActionCard({
+  action,
+  isSelected,
+  onSelect,
+  onClose,
+  onFlag,
+  onApprove,
+  onAskAI,
+  onDismiss,
+  onArOp,
+}: ActionCardProps) {
   return (
-    <div className="bg-bg-card rounded-card border border-border shadow-card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <span
-          className={clsx(
-            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border",
-            severityColor(action.severity)
-          )}
-        >
-          <Icon className="w-3.5 h-3.5" />
-          {severityLabels[action.severity]}
-        </span>
-        <span className="text-xs text-text-secondary">
-          {relativeTime(action.createdAt)}
-        </span>
-      </div>
-
-      {/* Clickable body for AR cards */}
+    <>
       <div
-        className={isAr && action.status === "pending" ? "cursor-pointer" : ""}
-        onClick={isAr && action.status === "pending" ? toggleDraft : undefined}
+        onClick={() => onSelect(action.id)}
+        className={clsx(
+          "flex items-center gap-3 bg-bg-card rounded-card border shadow-card px-3 h-[52px] cursor-pointer transition-all group",
+          isSelected
+            ? "border-accent-primary"
+            : "border-border hover:border-accent-primary/40"
+        )}
       >
-        <h3 className="text-sm font-semibold text-text-primary mb-1">
-          {action.headline}
-        </h3>
-        <p className="text-sm text-text-secondary mb-2">{action.detail}</p>
-        <p className="text-xs text-text-secondary mb-3">{action.driver}</p>
-      </div>
+        {/* Severity dot */}
+        <div
+          className={clsx(
+            "w-2.5 h-2.5 rounded-full shrink-0",
+            severityDotColor[action.severity] ?? "bg-border"
+          )}
+        />
 
-      <p className="text-xs text-text-secondary mb-3">
-        Source:{" "}
-        <span className="text-accent-primary font-medium">
+        {/* Headline */}
+        <p className="text-sm text-text-primary truncate flex-1">{action.headline}</p>
+
+        {/* Status chip (non-pending only) */}
+        {action.status !== "pending" && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-border/20 text-text-secondary border border-border shrink-0">
+            {statusLabels[action.status] ?? action.status}
+          </span>
+        )}
+
+        {/* Source */}
+        <span className="text-xs text-text-secondary hidden sm:block truncate max-w-[100px]">
           {action.sourceName}
         </span>
-      </p>
 
-      {/* Expanded draft body for AR cards */}
-      {isAr && expanded && (
-        <div className="mb-3 p-3 rounded-lg bg-bg-secondary border border-border overflow-x-auto">
-          {loadingDraft ? (
-            <p className="text-xs text-text-secondary">Loading draft...</p>
-          ) : draftBody ? (
-            <pre className="text-xs text-text-primary whitespace-pre-wrap font-mono leading-relaxed">
-              {draftBody}
-            </pre>
-          ) : (
-            <p className="text-xs text-text-secondary">Draft unavailable.</p>
-          )}
-        </div>
-      )}
+        {/* Time */}
+        <span className="text-xs text-text-secondary shrink-0">
+          {relativeTime(action.createdAt)}
+        </span>
 
-      <div className="flex items-center gap-2 pt-2 border-t border-border">
-        {action.status === "pending" && isAr && (
-          <>
-            <button
-              onClick={handleCopyAndSend}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-success/30 text-success hover:bg-success/10 transition-colors"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              Copy & Mark Sent
-            </button>
-            <button
-              onClick={() => onArOp?.(action.id, "snooze")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-border text-text-secondary hover:bg-border/30 transition-colors"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              Snooze 7d
-            </button>
-            <button
-              onClick={() => onArOp?.(action.id, "escalate")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-warning/30 text-warning hover:bg-warning/10 transition-colors"
-            >
-              <ArrowUpCircle className="w-3.5 h-3.5" />
-              Escalate
-            </button>
-            <button
-              onClick={() => onAskAI?.(action.id)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn bg-accent-primary text-white hover:bg-accent-hover transition-colors"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Ask AI
-            </button>
-            <button
-              onClick={() => onDismiss?.(action.id)}
-              className="ml-auto inline-flex items-center p-1.5 text-text-secondary hover:text-danger rounded-btn hover:bg-danger/10 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </>
-        )}
-        {action.status === "pending" && !isAr && (
-          <>
-            <button
-              onClick={() => onApprove?.(action.id)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-success/30 text-success hover:bg-success/10 transition-colors"
-            >
-              <CheckCircle className="w-3.5 h-3.5" />
-              Approve
-            </button>
-            <button
-              onClick={() => onFlag?.(action.id)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-border text-text-secondary hover:bg-border/30 transition-colors"
-            >
-              <Flag className="w-3.5 h-3.5" />
-              Flag
-            </button>
-            <button
-              onClick={() => onAskAI?.(action.id)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn bg-accent-primary text-white hover:bg-accent-hover transition-colors"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Ask AI
-            </button>
-            <button
-              onClick={() => onDismiss?.(action.id)}
-              className="ml-auto inline-flex items-center p-1.5 text-text-secondary hover:text-danger rounded-btn hover:bg-danger/10 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </>
-        )}
-        {action.status === "flagged" && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-warning">
-            <Flag className="w-3.5 h-3.5" />
-            Flagged for Review
-          </span>
-        )}
-        {action.status === "dismissed" && (
-          <span className="text-xs text-text-secondary">Dismissed</span>
-        )}
-        {action.status === "approved" && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-success">
-            <CheckCircle className="w-3.5 h-3.5" />
-            {isAr ? "Sent" : "Approved"}
-          </span>
-        )}
+        {/* Chevron */}
+        <ChevronRight className="w-4 h-4 text-text-secondary group-hover:text-text-primary shrink-0" />
       </div>
 
-      {/* Audit trail */}
-      {action.status !== "pending" && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <button
-            onClick={toggleHistory}
-            className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
-          >
-            <History className="w-3 h-3" />
-            {showHistory ? "Hide history" : "History"}
-          </button>
-          {showHistory && (
-            <ul className="mt-1.5 space-y-1">
-              {loadingEvents ? (
-                <li className="text-xs text-text-secondary">Loading...</li>
-              ) : events.length === 0 ? (
-                <li className="text-xs text-text-secondary">No history recorded.</li>
-              ) : (
-                events.map((e) => (
-                  <li key={e.id} className="text-xs text-text-secondary">
-                    <span className="font-medium">{e.fromStatus}</span>
-                    {" → "}
-                    <span className="font-medium">{e.toStatus}</span>
-                    <span className="ml-2 opacity-60">
-                      {relativeTime(new Date(e.createdAt))}
-                    </span>
-                  </li>
-                ))
-              )}
-            </ul>
-          )}
-        </div>
+      {/* Slide-over modal */}
+      {isSelected && (
+        <ActionModal
+          action={action}
+          onClose={onClose}
+          onFlag={onFlag}
+          onApprove={onApprove}
+          onAskAI={onAskAI}
+          onDismiss={onDismiss}
+          onArOp={onArOp}
+        />
       )}
-    </div>
+    </>
   );
 }
