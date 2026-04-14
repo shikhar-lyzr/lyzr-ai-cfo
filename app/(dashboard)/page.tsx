@@ -282,6 +282,7 @@ export default function DashboardHome() {
       left={
         <ActionFeed
           actions={actions}
+          userId={userId}
           onFlag={handleFlag}
           onApprove={handleApprove}
           onAskAI={handleAskAI}

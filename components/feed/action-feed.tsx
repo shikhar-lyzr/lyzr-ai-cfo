@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import type { Action, ActionType, Severity, ActionStatus } from "@/lib/types";
+import { useState, useEffect } from "react";
+import type { Action, ActionType, Severity, ActionStatus, StatsData } from "@/lib/types";
 import { ActionCard } from "@/components/feed/action-card";
 import { FilterBar } from "@/components/feed/filter-bar";
+import { StatsStrip } from "@/components/feed/stats-strip";
 
 interface ActionFeedProps {
   actions: Action[];
+  userId: string;
   onFlag?: (id: string) => void;
   onApprove?: (id: string) => void;
   onAskAI?: (id: string) => void;
@@ -20,10 +22,19 @@ const severityOrder: Record<Severity, number> = {
   info: 2,
 };
 
-export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss, onArOp }: ActionFeedProps) {
+export function ActionFeed({ actions, userId, onFlag, onApprove, onAskAI, onDismiss, onArOp }: ActionFeedProps) {
   const [typeFilter, setTypeFilter] = useState<ActionType | "all">("all");
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
   const [statusFilter, setStatusFilter] = useState<ActionStatus | "all">("all");
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [stats, setStats] = useState<StatsData | null>(null);
+
+  useEffect(() => {
+    fetch("/api/stats")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data) setStats(data); })
+      .catch(() => {});
+  }, [userId]);
 
   const filtered = actions
     .filter((a) => typeFilter === "all" || a.type === typeFilter)
@@ -44,6 +55,8 @@ export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss, onA
         </p>
       </div>
 
+      {stats && <StatsStrip stats={stats} />}
+
       <FilterBar
         activeType={typeFilter}
         activeSeverity={severityFilter}
@@ -53,7 +66,7 @@ export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss, onA
         onStatusChange={setStatusFilter}
       />
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {filtered.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-text-secondary text-sm">
             No actions match the current filters.
@@ -63,6 +76,9 @@ export function ActionFeed({ actions, onFlag, onApprove, onAskAI, onDismiss, onA
             <ActionCard
               key={action.id}
               action={action}
+              isSelected={selectedActionId === action.id}
+              onSelect={setSelectedActionId}
+              onClose={() => setSelectedActionId(null)}
               onFlag={onFlag}
               onApprove={onApprove}
               onAskAI={onAskAI}
