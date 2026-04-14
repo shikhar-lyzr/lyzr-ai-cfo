@@ -1,6 +1,11 @@
 ---
 name: monthly-close
 description: Guide the user through monthly financial close by reviewing all open items, generating commentary, and preparing reports
+confidence: 1
+usage_count: 1
+success_count: 1
+failure_count: 0
+negative_examples: []
 ---
 
 # Monthly Close

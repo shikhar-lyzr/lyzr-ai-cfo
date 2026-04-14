@@ -1,9 +1,61 @@
 import { query } from "gitclaw";
 import type { GCMessage, Query } from "gitclaw";
+import { readFileSync, readdirSync, statSync } from "fs";
+import { join } from "path";
 import { prisma } from "@/lib/db";
 import { createFinancialTools } from "./tools";
+import { buildAllowedTools } from "./allowed-tools";
 
 const AGENT_DIR = process.cwd() + "/agent";
+
+/**
+ * Pre-load all skill SKILL.md files so the agent has them in-context.
+ *
+ * Pre-load all skill instructions into the system prompt as a latency
+ * optimization. Gitclaw's default skill system tells the model to call
+ * `read skills/<name>/SKILL.md` which costs an extra tool round-trip per
+ * skill activation. Inlining them removes that overhead and guarantees
+ * availability regardless of the `read` tool's behavior through the
+ * Lyzr API proxy.
+ */
+function loadSkillContent(): string {
+  const skillsDir = join(AGENT_DIR, "skills");
+  let entries: string[];
+  try {
+    entries = readdirSync(skillsDir);
+  } catch {
+    return "";
+  }
+
+  const parts: string[] = [];
+  for (const name of entries) {
+    const dir = join(skillsDir, name);
+    try {
+      if (!statSync(dir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    const filePath = join(dir, "SKILL.md");
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      parts.push(`<skill name="${name}">\n${content}\n</skill>`);
+    } catch {
+      // no SKILL.md, skip
+    }
+  }
+
+  if (parts.length === 0) return "";
+  return (
+    "## Pre-loaded Skill Instructions\n" +
+    "The following skill instructions are available. Use the matching skill " +
+    "when the user's request fits its description. You do NOT need to call " +
+    "the `read` tool — the full content is already here.\n\n" +
+    parts.join("\n\n")
+  );
+}
+
+// Cache once at module load — skill files don't change at runtime
+const SKILL_CONTENT = loadSkillContent();
 
 // Inject the Lyzr Key as OpenAI compatible key for gitclaw pi-ai router
 if (process.env.LYZR_API_KEY && !process.env.OPENAI_API_KEY) {
@@ -127,6 +179,11 @@ async function buildContext(
     );
   }
 
+  // Append pre-loaded skills so the agent can use them without `read`
+  if (SKILL_CONTENT) {
+    parts.push(SKILL_CONTENT);
+  }
+
   return parts.join("\n\n");
 }
 
@@ -158,7 +215,7 @@ export async function chatWithAgent(
       model: MODEL,
       systemPromptSuffix: context,
       tools,
-      replaceBuiltinTools: true,
+      allowedTools: buildAllowedTools(tools),
       maxTurns: 10,
       constraints: { temperature: 0.3 },
     });
@@ -222,38 +279,55 @@ export async function analyzeUpload(
 You are the CFO agent. This is your primary duty: proactive variance detection.
 
 Execute this workflow using your tools:
-1. Use analyze_financial_data with dataSourceId="${dataSourceId}" to identify ALL variances exceeding the 5% threshold
-2. Compile ALL significant variances into a single array and use the create_actions tool to bulk-insert them into the user's feed in ONE step. Apply your severity rules:
+1. Call the \`memory\` tool with action="load" first to recall what you already know about this business
+2. Use analyze_financial_data with dataSourceId="${dataSourceId}" to identify ALL variances exceeding the 5% threshold
+3. Compile ALL significant variances into a single array and use the create_actions tool to bulk-insert them into the user's feed in ONE step. Apply your severity rules:
    - critical: >20% variance
-   - warning: 10-20% variance  
+   - warning: 10-20% variance
    - info: 5-10% variance
-3. Include clear headlines, dollar-amount details, and identify the driver for each action
-4. After all actions are created, call generate_variance_report to gather summary data, then compose a professional Monthly Variance Report in markdown and call save_document to persist it
-5. Provide a brief executive summary of the findings and mention the generated report
+4. Include clear headlines, dollar-amount details, and identify the driver for each action
+5. After all actions are created, call generate_variance_report to gather summary data, then compose a professional Monthly Variance Report in markdown and call save_document to persist it
+6. **Reflect and learn**: if this upload revealed any durable fact about the business (a recurring vendor or category dominating OpEx, an unusual category mix, a likely business model signal, a recurring data-quality issue), append it to memory via \`memory\` action="save" with a short \`learned: ...\` commit message. Skip this step if nothing new was learned — do NOT save noise.
+7. Provide a brief executive summary of the findings and mention the generated report
 
 Do NOT skip any significant variances and DO NOT create actions individually. The user depends on you to catch everything above threshold using a single batch insertion.`;
 
+  console.log("[analyzeUpload] starting query for", dataSourceId);
   const result = query({
     prompt,
     dir: AGENT_DIR,
     model: MODEL,
     systemPromptSuffix: context,
     tools,
-    replaceBuiltinTools: true,
+    allowedTools: buildAllowedTools(tools),
     maxTurns: 10,
     constraints: { temperature: 0.3 },
   });
 
   let fullText = "";
+  let msgCount = 0;
 
   for await (const msg of result) {
+    msgCount++;
     if (msg.type === "delta" && msg.deltaType === "text") {
       fullText += msg.content;
-    } else if (msg.type === "assistant" && !fullText && msg.content) {
-      fullText = msg.content;
+    } else if (msg.type === "assistant") {
+      console.log("[analyzeUpload] assistant msg:", {
+        stopReason: msg.stopReason,
+        contentLen: msg.content?.length,
+        errorMessage: msg.errorMessage,
+      });
+      if (!fullText && msg.content) fullText = msg.content;
+    } else if (msg.type === "system") {
+      console.log("[analyzeUpload] system msg:", msg.subtype, msg.content?.slice(0, 300));
+    } else if (msg.type === "tool_use") {
+      console.log("[analyzeUpload] tool_use:", msg.toolName);
+    } else if (msg.type === "tool_result") {
+      console.log("[analyzeUpload] tool_result:", msg.toolName, msg.isError ? "ERROR" : "ok", msg.content?.slice(0, 200));
     }
   }
 
+  console.log("[analyzeUpload] done. messages:", msgCount, "textLen:", fullText.length);
   return fullText;
 }
 
@@ -274,35 +348,52 @@ export async function analyzeArUpload(
   const prompt = `A new AR aging CSV "${fileName}" was just uploaded with ${invoiceCount} invoices (data source ID: ${dataSourceId}).
 
 Execute this workflow:
-1. Call scan_ar_aging with dataSourceId="${dataSourceId}"
-2. Compile eligible invoices into a single batch and call create_ar_actions
-3. For each newly-created action, call draft_dunning_email with the bucket-appropriate tone
-4. Call generate_ar_summary to gather summary data, then compose a professional AR Aging Summary in markdown and call save_document to persist it
-5. Provide a brief summary of total overdue balance, top three items, and mention the generated report
+1. Call the \`memory\` tool with action="load" first to recall what you already know about this user's customer base and collection patterns
+2. Call scan_ar_aging with dataSourceId="${dataSourceId}"
+3. Compile eligible invoices into a single batch and call create_ar_actions
+4. For each newly-created action, call draft_dunning_email with the bucket-appropriate tone
+5. Call generate_ar_summary to gather summary data, then compose a professional AR Aging Summary in markdown and call save_document to persist it
+6. **Reflect and learn**: if you noticed a chronic late-payer, a customer concentration risk, or a pattern in which buckets dominate, append it to memory via \`memory\` action="save" with a short \`learned: ...\` commit message. Skip this step if nothing new was learned.
+7. Provide a brief summary of total overdue balance, top three items, and mention the generated report
 
 Do not create actions for invoices in cooldown or snoozed.`;
 
+  console.log("[analyzeArUpload] starting query for", dataSourceId);
   const result = query({
     prompt,
     dir: AGENT_DIR,
     model: MODEL,
     systemPromptSuffix: context,
     tools,
-    replaceBuiltinTools: true,
+    allowedTools: buildAllowedTools(tools),
     maxTurns: 10,
     constraints: { temperature: 0.3 },
   });
 
   let fullText = "";
+  let msgCount = 0;
 
   for await (const msg of result) {
+    msgCount++;
     if (msg.type === "delta" && msg.deltaType === "text") {
       fullText += msg.content;
-    } else if (msg.type === "assistant" && !fullText && msg.content) {
-      fullText = msg.content;
+    } else if (msg.type === "assistant") {
+      console.log("[analyzeArUpload] assistant msg:", {
+        stopReason: msg.stopReason,
+        contentLen: msg.content?.length,
+        errorMessage: msg.errorMessage,
+      });
+      if (!fullText && msg.content) fullText = msg.content;
+    } else if (msg.type === "system") {
+      console.log("[analyzeArUpload] system msg:", msg.subtype, msg.content?.slice(0, 300));
+    } else if (msg.type === "tool_use") {
+      console.log("[analyzeArUpload] tool_use:", msg.toolName);
+    } else if (msg.type === "tool_result") {
+      console.log("[analyzeArUpload] tool_result:", msg.toolName, msg.isError ? "ERROR" : "ok", msg.content?.slice(0, 200));
     }
   }
 
+  console.log("[analyzeArUpload] done. messages:", msgCount, "textLen:", fullText.length);
   return fullText;
 }
 
@@ -336,7 +427,7 @@ export async function generateReport(
     model: MODEL,
     systemPromptSuffix: context,
     tools,
-    replaceBuiltinTools: true,
+    allowedTools: buildAllowedTools(tools),
     maxTurns: 10,
     constraints: { temperature: 0.3 },
   });

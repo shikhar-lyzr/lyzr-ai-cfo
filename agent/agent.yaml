@@ -20,7 +20,9 @@ tools:
   - generate_ar_summary
   - save_document
 
-settings:
-  replace_builtin_tools: true
+runtime:
   max_turns: 10
+  timeout: 120000
+
+settings:
   temperature: 0.3

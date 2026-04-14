@@ -32,19 +32,19 @@ export async function POST(
     // default to variance
   }
 
-  await prisma.dataSource.update({
-    where: { id },
-    data: { status: "processing" },
-  });
+  const restoreReady = () =>
+    prisma.dataSource.update({ where: { id }, data: { status: "ready" } });
 
   if (shape === "ar") {
     const invoiceCount = await prisma.invoice.count({ where: { dataSourceId: id } });
     analyzeArUpload(session.userId, id, dataSource.name, invoiceCount)
-      .catch((err) => console.error("[reanalyze] AR agent failed:", err));
+      .then(restoreReady)
+      .catch((err) => { console.error("[reanalyze] AR agent failed:", err); restoreReady(); });
   } else {
     analyzeUpload(session.userId, id, dataSource.name, dataSource.recordCount)
-      .catch((err) => console.error("[reanalyze] Variance agent failed:", err));
+      .then(restoreReady)
+      .catch((err) => { console.error("[reanalyze] Variance agent failed:", err); restoreReady(); });
   }
 
-  return NextResponse.json({ status: "processing" });
+  return NextResponse.json({ status: "reanalyzing" });
 }

@@ -269,26 +269,73 @@ export function createFinancialTools(userId: string) {
       const existingHeadlines = new Set(existing.map((e) => e.headline));
 
       const newActions = items.filter((a) => !existingHeadlines.has(a.headline));
-      
+
       if (newActions.length === 0) {
         return { text: `All ${items.length} actions already exist (deduplicated by headline).` };
       }
 
-      await prisma.action.createMany({
-        data: newActions.map((a) => ({
+      // Validate dataSourceIds exist before inserting
+      const dsIds = [...new Set(newActions.map((a) => a.dataSourceId))];
+      const validDs = await prisma.dataSource.findMany({
+        where: { id: { in: dsIds }, userId },
+        select: { id: true },
+      });
+      const validDsIds = new Set(validDs.map((d) => d.id));
+
+      // Sanitize all records first, skip any with bad data
+      const validTypes = ["variance", "anomaly", "recommendation"];
+      const validSeverities = ["critical", "warning", "info"];
+      const sanitized: Array<{
+        userId: string;
+        type: string;
+        severity: string;
+        headline: string;
+        detail: string;
+        driver: string;
+        sourceDataSourceId: string;
+      }> = [];
+
+      for (const a of newActions) {
+        if (!validDsIds.has(a.dataSourceId)) {
+          console.warn(`[create_actions] Skipping "${a.headline}": invalid dataSourceId "${a.dataSourceId}"`);
+          continue;
+        }
+        sanitized.push({
           userId,
-          type: a.type as "variance" | "anomaly" | "recommendation",
-          severity: a.severity as "critical" | "warning" | "info",
+          type: validTypes.includes(a.type) ? a.type : "variance",
+          severity: validSeverities.includes(a.severity) ? a.severity : "warning",
           headline: a.headline,
           detail: a.detail,
           driver: a.driver,
           sourceDataSourceId: a.dataSourceId,
-        })),
-      });
+        });
+      }
 
+      if (sanitized.length === 0) {
+        return { text: `No valid actions to create (${newActions.length} had invalid data source IDs).` };
+      }
+
+      // Batch insert with sanitized data; fall back to one-by-one on failure
+      let created = 0;
+      try {
+        await prisma.action.createMany({ data: sanitized });
+        created = sanitized.length;
+      } catch (batchErr) {
+        console.warn("[create_actions] Batch insert failed, falling back to individual inserts:", batchErr instanceof Error ? batchErr.message : batchErr);
+        for (const row of sanitized) {
+          try {
+            await prisma.action.create({ data: row });
+            created++;
+          } catch (err) {
+            console.error(`[create_actions] Failed for "${row.headline}":`, err instanceof Error ? err.message : err);
+          }
+        }
+      }
+
+      const skipped = newActions.length - sanitized.length;
       return {
-        text: `Successfully created ${newActions.length} actions in batch. (${existingHeadlines.size} skipped as duplicates)`,
-        details: { created: newActions.length, skipped: existingHeadlines.size },
+        text: `Successfully created ${created} actions.${existingHeadlines.size > 0 ? ` (${existingHeadlines.size} deduplicated)` : ""}${skipped > 0 ? ` (${skipped} skipped: invalid data source)` : ""}`,
+        details: { created, skipped: existingHeadlines.size + skipped },
       };
     }
   );
@@ -564,40 +611,37 @@ export function createFinancialTools(userId: string) {
 
   const createArActions = tool(
     "create_ar_actions",
-    "Create AR follow-up action items in the user's feed. Each action is linked to an invoice. Deduplicates by (invoiceId, status=pending).",
+    "Create AR follow-up action items in the user's feed. Pass the invoice IDs and severity from scan_ar_aging — the tool resolves all display details (headline, amount, customer) from the database. Deduplicates by (invoiceId, status=pending).",
     {
       type: "object",
       properties: {
         actions: {
           type: "array",
-          description: "List of AR actions to create",
+          description: "List of AR actions to create. Only invoiceId and severity are required — headline/detail/driver are auto-generated from the invoice record.",
           items: {
             type: "object",
             properties: {
-              invoiceId: { type: "string", description: "The invoice's database ID (cuid from scan_ar_aging results, NOT the invoice number)" },
+              invoiceId: { type: "string", description: "The invoice's database ID (cuid from scan_ar_aging [id=...] fields)" },
               severity: {
                 type: "string",
                 enum: ["critical", "warning", "info"],
+                description: "Aging bucket severity from scan_ar_aging",
               },
-              headline: { type: "string" },
-              detail: { type: "string" },
-              driver: { type: "string" },
-              dataSourceId: { type: "string" },
+              driver: { type: "string", description: "Optional reason/context for follow-up" },
             },
-            required: ["invoiceId", "severity", "headline", "detail", "driver", "dataSourceId"],
+            required: ["invoiceId", "severity"],
           },
         },
       },
       required: ["actions"],
     },
     async (args) => {
-      // The agent may send extra/missing fields — normalize to our schema
       const rawItems = (args.actions as Record<string, unknown>[]) || [];
       if (rawItems.length === 0) {
         return { text: "No AR actions provided." };
       }
 
-      // Resolve invoiceIds and normalize each item
+      // Resolve invoiceIds and build actions from authoritative DB data
       const items: Array<{
         invoiceId: string;
         severity: string;
@@ -607,19 +651,18 @@ export function createFinancialTools(userId: string) {
         dataSourceId: string;
       }> = [];
 
+      const invoiceSelect = { id: true, invoiceNumber: true, customer: true, amount: true, dataSourceId: true, dueDate: true } as const;
+
       for (const raw of rawItems) {
         let invoiceId = String(raw.invoiceId || "");
 
-        // Resolve invoice number to database ID if needed
-        const invoiceSelect = { id: true, invoiceNumber: true, customer: true, amount: true, dataSourceId: true, dueDate: true } as const;
-        const directMatch = invoiceId ? await prisma.invoice.findUnique({
+        // Resolve: try direct ID first, then invoice number
+        let invoice = invoiceId ? await prisma.invoice.findUnique({
           where: { id: invoiceId },
           select: invoiceSelect,
         }) : null;
 
-        let invoice = directMatch;
         if (!invoice) {
-          // Try by invoice number, scoped to this user's data sources
           invoice = await prisma.invoice.findFirst({
             where: {
               invoiceNumber: invoiceId,
@@ -628,29 +671,26 @@ export function createFinancialTools(userId: string) {
             orderBy: { createdAt: "desc" },
             select: invoiceSelect,
           });
-          if (invoice) invoiceId = invoice.id;
         }
 
         if (!invoice) continue; // Skip unresolvable invoices
 
-        // Build normalized action with fallbacks for missing fields
-        const customer = String(raw.customer || invoice.customer || "Unknown");
-        const amount = Number(raw.amount ?? invoice.amount ?? 0);
+        const daysOverdue = Math.floor((Date.now() - invoice.dueDate.getTime()) / 86400000);
 
-        // Compute severity from overdue days if agent didn't provide it
+        // Severity: trust agent, fall back to bucket calculation
         let severity = raw.severity ? String(raw.severity).toLowerCase() : "";
-        if (!severity || !["critical", "warning", "info"].includes(severity)) {
-          const daysOverdue = Math.floor((Date.now() - invoice.dueDate.getTime()) / 86400000);
+        if (!["critical", "warning", "info"].includes(severity)) {
           severity = daysOverdue >= 45 ? "critical" : daysOverdue >= 15 ? "warning" : "info";
         }
 
+        // Build display strings from authoritative invoice record
         items.push({
           invoiceId: invoice.id,
           severity,
-          headline: String(raw.headline || `AR Follow-up: ${invoice.invoiceNumber} — ${customer} $${(amount / 1000).toFixed(1)}K`),
-          detail: String(raw.detail || `Overdue invoice ${invoice.invoiceNumber} from ${customer} for $${amount.toLocaleString()}`),
-          driver: String(raw.driver || `Overdue invoice from ${customer}`),
-          dataSourceId: String(raw.dataSourceId || invoice.dataSourceId),
+          headline: `AR Follow-up: ${invoice.invoiceNumber} — ${invoice.customer} $${(invoice.amount / 1000).toFixed(1)}K`,
+          detail: `Overdue invoice ${invoice.invoiceNumber} from ${invoice.customer} for $${invoice.amount.toLocaleString()} (${daysOverdue} days past due)`,
+          driver: String(raw.driver || `Overdue invoice from ${invoice.customer}`),
+          dataSourceId: invoice.dataSourceId,
         });
       }
 
