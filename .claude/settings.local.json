@@ -85,7 +85,15 @@
       "Bash(du -sh .worktrees/v1.5-ar-followups/node_modules)",
       "Bash(echo \"Started dev server, PID: $!\")",
       "Bash(echo \"PID: $!\")",
-      "Bash(rm -rf .next)"
+      "Bash(rm -rf .next)",
+      "Bash(grep -l \"getSession\" lib/auth*)",
+      "Bash(grep -l \"prisma\" lib/db*)",
+      "Bash(npx eslint:*)",
+      "Bash(git push:*)",
+      "Bash(ls README*:*)",
+      "Bash(grep -rn \"discoverSkills\\\\|formatSkillsForPrompt\\\\|SKILL\" node_modules/gitclaw/dist/*.js)",
+      "Bash(npx jest:*)",
+      "Skill(update-config)"
     ]
   }
 }
