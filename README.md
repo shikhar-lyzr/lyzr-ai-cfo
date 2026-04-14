@@ -36,10 +36,21 @@ Proactive AI-powered financial operations assistant. Detects budget variances, m
 - Click-to-expand inline email preview on each AR card
 - "Scan AR" button on the morning briefing for on-demand re-scans
 
-### Morning Briefing
-- Auto-generated executive summary on dashboard load
-- Streams via SSE from the agent endpoint
-- Collapsible panel with manual refresh
+### Dashboard (V2)
+- **Stats strip** with action counts, AR total donut, and top-3 variances
+- **Compact action rows** (52px) — click to open a right-side slide-over with full detail and action buttons
+- **Budget vs actual chart** (Recharts) in the right panel
+- **Morning briefing** auto-streams into chat as the first agent message (cached per session)
+
+### Data Sources (V2)
+- Tabbed view: **Variance** and **Accounts Receivable**
+- Upload CSV on either tab — shape is auto-detected and validated against the active tab
+- **Link a Google Sheet** by pasting its published CSV URL
+- **Re-analyze** any ready source on demand
+
+### Documents
+- Markdown rendering via `react-markdown`
+- Inline error banners and a fix for the generate-race condition
 
 ### Chat
 - Follow-up questions about any action or financial data
@@ -56,6 +67,8 @@ Proactive AI-powered financial operations assistant. Detects budget variances, m
 | UI | React | 19.2.4 |
 | Styling | Tailwind CSS | v4 |
 | Icons | lucide-react | 1.7.0 |
+| Charts | Recharts | 3.8.1 |
+| Markdown | react-markdown | 10.1.0 |
 | Database | SQLite via Prisma | 6.19.3 |
 | Agent SDK | gitclaw | 1.3.3 |
 | AI Engine | Lyzr Agent Studio v4 | — |
@@ -165,24 +178,33 @@ lyzr-ai-cfo/
 │   │   │       └── ar/route.ts    # GET (draft) + POST (mark_sent/snooze/escalate)
 │   │   ├── auth/                  # Auth routes
 │   │   ├── chat/route.ts          # SSE streaming agent chat
-│   │   ├── data-sources/route.ts  # List data sources
+│   │   ├── chart/
+│   │   │   └── budget-vs-actual/route.ts  # Budget chart data
+│   │   ├── data-sources/
+│   │   │   ├── route.ts           # List data sources (supports shape filter)
+│   │   │   ├── link-sheet/route.ts        # Link a Google Sheet CSV URL
+│   │   │   └── [id]/reanalyze/route.ts    # Re-run agent on an existing source
+│   │   ├── stats/route.ts         # Dashboard stats strip data
 │   │   ├── seed-demo/route.ts     # Seed demo variance data
 │   │   └── upload/route.ts        # CSV upload (auto-detects variance vs AR)
 │   ├── login/page.tsx             # Login page
 │   └── layout.tsx                 # Root layout
 │
 ├── components/                    # React components
-│   ├── briefing/
-│   │   └── morning-briefing.tsx   # Auto-generated executive summary + Scan AR
 │   ├── chat/
-│   │   ├── chat-panel.tsx         # Chat container
+│   │   ├── chat-panel.tsx         # Chat container (first message = morning briefing)
 │   │   ├── chat-input.tsx         # Message input
 │   │   └── message-bubble.tsx     # Chat message rendering
+│   ├── dashboard/
+│   │   └── budget-chart.tsx       # Recharts budget vs actual bar chart
 │   ├── data-sources/
 │   │   ├── upload-area.tsx        # File upload dropzone
-│   │   └── source-list.tsx        # Data source list
+│   │   ├── link-sheet-area.tsx    # Google Sheet CSV link form
+│   │   └── source-list.tsx        # Data source list with re-analyze
 │   ├── feed/
-│   │   ├── action-card.tsx        # Action card (variance + AR variants)
+│   │   ├── stats-strip.tsx        # Counts + AR donut + top variances
+│   │   ├── action-card.tsx        # Compact 52px row
+│   │   ├── action-modal.tsx       # Right-side slide-over with full detail
 │   │   ├── action-feed.tsx        # Scrollable feed with filtering
 │   │   └── filter-bar.tsx         # Type/Severity/Status filter chips
 │   └── layout/
@@ -195,6 +217,7 @@ lyzr-ai-cfo/
 │   │   └── tools.ts               # 10 agent tools + shared helpers
 │   ├── csv/
 │   │   ├── detect-shape.ts        # CSV classifier (variance/ar/unknown)
+│   │   ├── variance-parser.ts     # Shared variance parser (upload + re-analyze)
 │   │   ├── ar-parser.ts           # AR aging CSV parser
 │   │   └── llm-mapper.ts          # LLM column mapping fallback
 │   ├── auth.ts                    # Session cookie helpers
@@ -362,7 +385,11 @@ User ──< DataSource ──< FinancialRecord
 | `/api/actions/[id]/ar` | GET | Return (and lazily generate) dunning email draft |
 | `/api/actions/[id]/ar` | POST | AR operations: `{op: "mark_sent"}`, `{op: "snooze", days: 7}`, `{op: "escalate"}` |
 | `/api/chat` | POST | SSE streaming agent chat |
-| `/api/data-sources` | GET | List data sources for user |
+| `/api/chart/budget-vs-actual` | GET | Aggregated data for the budget chart |
+| `/api/stats` | GET | Dashboard stats strip (counts, AR total, top variances) |
+| `/api/data-sources` | GET | List data sources for user (supports `?shape=variance\|ar`) |
+| `/api/data-sources/link-sheet` | POST | Link a Google Sheet by published CSV URL |
+| `/api/data-sources/[id]/reanalyze` | POST | Re-run agent analysis on an existing source |
 | `/api/seed-demo` | POST | Seed demo variance data |
 
 ### AR Operations Detail
@@ -382,30 +409,32 @@ All AR POST operations run inside `prisma.$transaction` to atomically update bot
 ### Dashboard (`app/(dashboard)/page.tsx`)
 
 The main view is a resizable split pane:
-- **Left:** Action feed with filter bar
-- **Right:** Morning briefing (top) + Chat panel (bottom)
+- **Left:** `StatsStrip` (counts + AR donut + top variances) above a compact `ActionFeed`
+- **Right:** `BudgetChart` (top) + `ChatPanel` (bottom). The morning briefing streams into chat as the first agent message.
+
+### Stats Strip (`components/feed/stats-strip.tsx`)
+
+Three tiles: pending/flagged counts, AR total with a donut by bucket, and the top 3 variances by absolute delta. Fed by `/api/stats`.
 
 ### Action Card (`components/feed/action-card.tsx`)
 
-Renders differently based on `action.type`:
+Compact 52px row: severity dot, headline, amount, status chip. Clicking a row selects it and opens `ActionModal`.
 
-**Variance/Anomaly/Recommendation cards:**
-- Buttons: Approve, Flag, Ask AI, Dismiss
+### Action Modal (`components/feed/action-modal.tsx`)
 
-**AR Follow-up cards (`ar_followup`):**
-- Buttons: Copy & Mark Sent, Snooze 7d, Escalate, Ask AI, Dismiss
-- Click card body to expand inline email draft (`<pre>` block)
-- First expand lazily loads `draftBody` from `GET /api/actions/[id]/ar`
+Right-side slide-over (portal, esc-to-close) showing full action detail plus the workflow buttons:
+
+**Variance/Anomaly/Recommendation:** Approve, Flag, Ask AI, Dismiss.
+
+**AR Follow-up (`ar_followup`):** Copy & Mark Sent, Snooze 7d, Escalate, Ask AI, Dismiss. The dunning draft is lazy-loaded from `GET /api/actions/[id]/ar` on first open. Includes an inline history section.
 
 ### Filter Bar (`components/feed/filter-bar.tsx`)
 
 Three filter groups: Type (All/Variance/Anomaly/Rec./AR), Severity (All/Critical/Warning/Info), Status (All/Pending/Flagged/Dismissed).
 
-### Morning Briefing (`components/briefing/morning-briefing.tsx`)
+### Budget Chart (`components/dashboard/budget-chart.tsx`)
 
-- Auto-triggers on first dashboard load when actions exist
-- Collapsible, refreshable
-- **Scan AR** button: triggers an AR scan through the chat SSE endpoint; disabled when no AR data sources exist
+Recharts bar chart driven by `/api/chart/budget-vs-actual`. Replaces the standalone morning briefing panel.
 
 ---
 
@@ -479,17 +508,17 @@ npm test
 npm run test:watch
 ```
 
-### Test Suite (70 tests, 7 files)
+### Test Suite (146 tests, 13 files)
 
-| File | Tests | Covers |
-|---|---|---|
-| `__tests__/lib/utils.test.ts` | 7 | relativeTime, formatCurrency, severityColor |
-| `__tests__/lib/csv/detect-shape.test.ts` | 10 | Regex fast-path CSV classification |
-| `__tests__/lib/csv/ar-parser.test.ts` | 10 | Column detection, row parsing, skip reasons |
-| `__tests__/lib/csv/ar-parser-dates.test.ts` | 12 | Date format matrix (3 formats + invalid inputs) |
-| `__tests__/lib/invoice-state.test.ts` | 14 | State transition matrix + action status mapping |
-| `__tests__/lib/agent/ar-tools.test.ts` | 13 | Tone inference buckets + dunning email builder |
-| `__tests__/lib/utils.test.ts` | 4 | Utility function tests |
+Covers:
+
+- `__tests__/lib/utils.test.ts` — `relativeTime`, `formatCurrency`, `severityColor`
+- `__tests__/lib/csv/detect-shape.test.ts` — regex fast-path CSV classification
+- `__tests__/lib/csv/variance-parser.test.ts` — shared variance parser (column detection, row parsing)
+- `__tests__/lib/csv/ar-parser.test.ts` — AR column detection, row parsing, skip reasons
+- `__tests__/lib/csv/ar-parser-dates.test.ts` — date format matrix (3 formats + invalid inputs)
+- `__tests__/lib/invoice-state.test.ts` — state transition matrix + action status mapping
+- `__tests__/lib/agent/ar-tools.test.ts` — tone inference buckets + dunning email builder
 
 All tests are pure unit tests — no database or network calls. Agent tools that hit Prisma are tested via their exported pure helpers (`inferToneFromInvoice`, `buildDunningEmailBody`).
 
@@ -542,3 +571,4 @@ Authentication is cookie-based for simplicity (demo app):
 
 Detailed design specifications live in `docs/superpowers/specs/`:
 - `2026-04-10-v1.5-ar-followups-design.md` — Full V1.5 AR follow-ups design spec including architecture decisions, rejected alternatives, and state machine details
+- `2026-04-14-v2-dashboard-polish-design.md` — V2 dashboard polish: stats strip, compact rows + slide-over, tabbed data sources, Google Sheet linking, budget chart, briefing-in-chat
