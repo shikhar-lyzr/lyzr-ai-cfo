@@ -4,15 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { ResizableSplitPane } from "@/components/layout/resizable-split-pane";
 import { ActionFeed } from "@/components/feed/action-feed";
 import { ChatPanel } from "@/components/chat/chat-panel";
-import { MorningBriefing } from "@/components/briefing/morning-briefing";
-import type { Action, ChatMessage, DataSource } from "@/lib/types";
+import { BudgetChart } from "@/components/dashboard/budget-chart";
+import type { Action, ChatMessage } from "@/lib/types";
 
 export default function DashboardHome() {
   const [actions, setActions] = useState<Action[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
 
@@ -41,19 +40,90 @@ export default function DashboardHome() {
     setIsLoading(false);
   }, [userId]);
 
-  const fetchDataSources = useCallback(async () => {
-    if (!userId) return;
-    const res = await fetch(`/api/data-sources?userId=${userId}`);
-    if (res.ok) {
-      const data = await res.json();
-      setDataSources(data);
-    }
-  }, [userId]);
-
   useEffect(() => {
     fetchActions();
-    fetchDataSources();
-  }, [fetchActions, fetchDataSources]);
+  }, [fetchActions]);
+
+  // Auto-load morning briefing as first chat message
+  useEffect(() => {
+    if (!userId) return;
+
+    const cacheKey = `briefing_${userId}`;
+    const cached = sessionStorage.getItem(cacheKey);
+
+    if (cached) {
+      setMessages([{
+        id: "briefing_initial",
+        userId,
+        role: "agent",
+        content: cached,
+        timestamp: new Date(),
+      }]);
+      return;
+    }
+
+    // Stream briefing from chat API
+    (async () => {
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            message: "Give me my morning briefing. Summarize my current financial position, list items needing attention by priority, and highlight anything that changed since last review. Be concise and executive-level.",
+          }),
+        });
+
+        if (!res.ok || !res.body) return;
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let content = "";
+        const msgId = "briefing_initial";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          const lines = text.split("\n").filter((l) => l.startsWith("data: "));
+
+          for (const line of lines) {
+            try {
+              const json = JSON.parse(line.replace("data: ", ""));
+              if (json.done) break;
+              if (json.token) {
+                content += json.token;
+                setMessages((prev) => {
+                  const existing = prev.find((m) => m.id === msgId);
+                  if (existing) {
+                    return prev.map((m) =>
+                      m.id === msgId ? { ...m, content } : m
+                    );
+                  }
+                  return [{
+                    id: msgId,
+                    userId,
+                    role: "agent" as const,
+                    content,
+                    timestamp: new Date(),
+                  }];
+                });
+              }
+            } catch {
+              // skip malformed SSE
+            }
+          }
+        }
+
+        if (content) {
+          sessionStorage.setItem(cacheKey, content);
+        }
+      } catch {
+        // Silent — briefing is non-critical
+      }
+    })();
+  }, [userId]);
 
   // Poll for new actions for 60s after mount — catches background agent results
   useEffect(() => {
@@ -292,12 +362,12 @@ export default function DashboardHome() {
       }
       right={
         <div className="flex flex-col h-full bg-slate-50/50 p-4 gap-4 border-l border-border/40">
-          {/* Morning Briefing — auto-generates on first load */}
+          {/* Budget vs Actual Chart */}
           <div className="shrink-0 drop-shadow-sm">
-            <MorningBriefing userId={userId} actions={actions} dataSources={dataSources} onRefreshActions={fetchActions} />
+            <BudgetChart />
           </div>
 
-          {/* Chat Panel — for follow-up questions */}
+          {/* Chat Panel — briefing auto-loads + follow-up questions */}
           <div className="flex-1 min-h-0 rounded-xl border border-border/60 shadow-[0_2px_12px_rgba(0,0,0,0.02)] overflow-hidden">
             <ChatPanel
               messages={messages}
