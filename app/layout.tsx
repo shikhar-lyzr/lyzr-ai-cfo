@@ -1,13 +1,28 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { DM_Sans, Playfair_Display, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-playfair",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Lyzr AI CFO",
-  description:
-    "Finance Action Engine — proactive variance review and financial insights",
+  title: "Lyzr CFO's Office — AgenticOS",
+  description: "Autonomous financial intelligence powered by Lyzr AgenticOS",
 };
 
 export default function RootLayout({
@@ -17,7 +32,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} min-h-full flex flex-col`}>
+      <body
+        className={`${dmSans.variable} ${playfair.variable} ${jetbrainsMono.variable} min-h-full flex flex-col`}
+        style={{ fontFamily: "var(--font-dm-sans), system-ui, sans-serif" }}
+      >
         {children}
       </body>
     </html>
