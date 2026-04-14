@@ -1,3 +1,3 @@
 # Agent Memory
 
-No memories yet. Memories will be saved here as the agent learns about users and their financial data.
+- SaaS company with paid-social-heavy marketing and growing SaaS tooling spend
