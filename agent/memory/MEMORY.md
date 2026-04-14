@@ -1,3 +1,3 @@
 # Agent Memory
 
-No memories yet. Memories will be saved here as the agent learns about users and their financial data.
+- Diagnostic test entry: memory tool wiring verified at 2026-04-14T04:36:08.724Z
