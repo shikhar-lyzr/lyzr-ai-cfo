@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Clock, AlertTriangle, MessageSquare, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Copy, Clock, AlertTriangle, MessageSquare, X, HelpCircle } from "lucide-react";
 import { PriorityBadge } from "@/components/shared/priority-badge";
 import type { Action } from "@/lib/types";
 
@@ -28,6 +29,7 @@ interface ARActionCardProps {
 }
 
 export function ARActionCard({ action, onAction }: ARActionCardProps) {
+  const router = useRouter();
   const [showDraft, setShowDraft] = useState(false);
   const [draftBody, setDraftBody] = useState<string | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);

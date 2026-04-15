@@ -63,7 +63,12 @@ function ActionCard({ action, onAction }: { action: Action; onAction: (id: strin
   );
 }
 
-export function ActionsRequired() {
+interface ActionsRequiredProps {
+  limit?: number;
+  showViewAll?: boolean;
+}
+
+export function ActionsRequired({ limit = 5, showViewAll = true }: ActionsRequiredProps) {
   const router = useRouter();
   const [actions, setActions] = useState<Action[]>([]);
 
@@ -72,7 +77,7 @@ export function ActionsRequired() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data?.userId) return;
-        return fetch(`/api/actions?userId=${data.userId}&status=pending&limit=5`);
+        return fetch(`/api/actions?userId=${data.userId}&status=pending&limit=${limit}`);
       })
       .then((r) => r?.ok ? r.json() : [])
       .then((data) => {
@@ -147,7 +152,7 @@ export function ActionsRequired() {
                 <ActionCard key={action.id} action={action} onAction={handleAction} />
               );
             })}
-            {actions.length >= 5 && (
+            {showViewAll && actions.length >= limit && (
               <button
                 onClick={() => router.push("/actions")}
                 className="w-full py-2.5 text-xs font-medium text-primary hover:underline"

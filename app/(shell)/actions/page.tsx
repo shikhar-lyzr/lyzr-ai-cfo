@@ -1,4 +1,4 @@
-import { ActionFeed } from "@/components/command-center/action-feed";
+import { ActionsRequired } from "@/components/command-center/actions-required";
 
 export default function ActionsPage() {
   return (
@@ -15,7 +15,7 @@ export default function ActionsPage() {
         </p>
       </div>
 
-      <ActionFeed />
+      <ActionsRequired limit={1000} showViewAll={false} />
     </div>
   );
 }
