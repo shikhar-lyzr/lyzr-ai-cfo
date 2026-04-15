@@ -110,7 +110,9 @@
       "Bash(git -C /c/Users/shikh/lyzr-ai-cfo status -sb)",
       "Bash(git -C /c/Users/shikh/lyzr-ai-cfo branch --show-current)",
       "Bash(git -C /c/Users/shikh/lyzr-ai-cfo diff --stat)",
-      "Bash(git -C /c/Users/shikh/lyzr-ai-cfo diff app/layout.tsx agent/skills/variance-review/SKILL.md .claude/settings.local.json)"
+      "Bash(git -C /c/Users/shikh/lyzr-ai-cfo diff app/layout.tsx agent/skills/variance-review/SKILL.md .claude/settings.local.json)",
+      "Bash(git *)",
+      "Bash(cat vitest.config.*)"
     ]
   }
 }

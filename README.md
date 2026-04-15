@@ -1,61 +1,306 @@
-# Lyzr AI CFO
+# Lyzr AI CFO — AgenticOS
 
-Proactive AI-powered financial operations assistant. Detects budget variances, manages accounts receivable follow-ups, drafts dunning emails, and surfaces action items — all through an agent-first architecture powered by [Lyzr Agent Studio](https://www.lyzr.ai/) via the [gitclaw](https://www.npmjs.com/package/gitclaw) SDK.
+An **autonomous financial operations platform** for the CFO's office. The interface is an AgenticOS shell: a Command Center, six domain journeys (Monthly Close, Reconciliation, Regulatory Capital, IFRS 9 ECL, Daily Liquidity, Regulatory Returns), a Build surface (Studio / Skills / Knowledge / Integrations / Flows), and an Observe surface (Decision Inbox / Runs / Compliance / Audit). Every action is powered by a gitclaw-driven AI agent that lives as a folder of files — `SOUL.md`, `RULES.md`, `DUTIES.md`, `skills/`, `knowledge/`, `memory/` — and streams typed pipeline events back to the UI.
 
 ## Table of Contents
 
-- [Features](#features)
+- [What Is It?](#what-is-it)
+- [Architecture](#architecture)
+- [How gitclaw / git-agent Works Here](#how-gitclaw--git-agent-works-here)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
-- [Architecture](#architecture)
 - [Agent System](#agent-system)
 - [Data Model](#data-model)
 - [API Routes](#api-routes)
-- [UI Components](#ui-components)
 - [CSV Ingestion](#csv-ingestion)
-- [AR Follow-ups (V1.5)](#ar-follow-ups-v15)
+- [AR Follow-ups](#ar-follow-ups)
 - [Testing](#testing)
 - [Sample Data](#sample-data)
-- [Scripts](#scripts)
+- [Scripts & Auth](#scripts--auth)
 
 ---
 
-## Features
+## What Is It?
 
-### Variance Detection
-- Upload a budget-vs-actual CSV and the AI agent automatically identifies variances exceeding thresholds
-- Creates action cards (critical >20%, warning 10-20%, info 5-10%) with one-click Approve / Flag / Dismiss
-- Generates executive-level commentary and draft emails for variance follow-ups
+Lyzr AI CFO ships as **AgenticOS** — an operating-system-style UI for financial workflows, not a classic BI dashboard. The three surfaces are:
 
-### AR Follow-ups (V1.5)
-- Upload an AR aging CSV and the agent buckets overdue invoices by age (1-14d friendly, 15-44d firm, 45d+ escalation)
-- Drafts tone-appropriate dunning emails cached on each action card
-- One-click **Copy & Mark Sent**, **Snooze 7d**, or **Escalate** — each atomically updates both the invoice and action state
-- Click-to-expand inline email preview on each AR card
-- "Scan AR" button on the morning briefing for on-demand re-scans
+| Surface | Purpose | Routes |
+|---|---|---|
+| **Run** (domain journeys) | Task-specific workspaces with scoped chat | `/`, `/agent-console`, `/monthly-close`, `/financial-reconciliation`, `/regulatory-capital`, `/ifrs9-ecl`, `/daily-liquidity`, `/regulatory-returns` |
+| **Build** | Author & inspect the agent's brain | `/agent-studio`, `/skills-manager`, `/knowledge-base`, `/integrations`, `/skill-flows` |
+| **Observe** | Audit what the agent did and why | `/decision-inbox`, `/agent-runs`, `/compliance`, `/audit-trail` |
 
-### Dashboard (V2)
-- **Stats strip** with action counts, AR total donut, and top-3 variances
-- **Compact action rows** (52px) — click to open a right-side slide-over with full detail and action buttons
-- **Budget vs actual chart** (Recharts) in the right panel
-- **Morning briefing** auto-streams into chat as the first agent message (cached per session)
+The **Command Center** (`/`) is the entry point — a search bar that hands off to the Agent Console with an auto-send query param (`/agent-console?message=...`) plus journey cards and pending-action chips. The **Agent Console** is a three-panel chat workspace that renders the agent's live pipeline (skill discovery, memory load, tool calls, file reads) as a collapsible timeline alongside the streamed response.
 
-### Data Sources (V2)
-- Tabbed view: **Variance** and **Accounts Receivable**
-- Upload CSV on either tab — shape is auto-detected and validated against the active tab
-- **Link a Google Sheet** by pasting its published CSV URL
-- **Re-analyze** any ready source on demand
+Domain journeys (e.g. `/monthly-close`) are fully sample-data driven shells with a docked chat panel that seeds a journey-scoped prompt. They demonstrate the target UX without requiring every workflow to be wired into real data yet.
 
-### Documents
-- Markdown rendering via `react-markdown`
-- Inline error banners and a fix for the generate-race condition
+---
 
-### Chat
-- Follow-up questions about any action or financial data
-- SSE streaming responses through the Lyzr agent
-- Context-aware — the agent has access to all uploaded data via tools
+## Architecture
+
+### Full-system diagram
+
+```
+┌─── Browser ────────────────────────────────────────────────────────┐
+│                                                                     │
+│   Command Center        Agent Console         6 Domain Journeys    │
+│   (/)                   (/agent-console)      (/monthly-close, …)  │
+│       │                       │                       │            │
+│       │  ?message=…            │                       │            │
+│       └─────────┬──────────────┴───────────────────────┘            │
+│                 │                                                    │
+│                 ▼                                                    │
+│         hooks/use-chat-stream.ts                                    │
+│         ─ manages messages[] and pipelineSteps[]                    │
+│         ─ parses SSE events: pipeline_step | delta | done | error  │
+│         ─ AbortController for stopStream                            │
+│                 │                                                    │
+│                 │  fetch POST /api/chat  (SSE text/event-stream)    │
+└─────────────────┼────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─── Next.js 16 App Router ───────────────────────────────────────────┐
+│                                                                      │
+│   proxy.ts   ── cookie gate (lyzr-session) → redirects to /login   │
+│                                                                      │
+│   API routes (all in app/api):                                     │
+│     /chat            → chatWithAgent(..., { onDelta, onComplete })│
+│     /upload          → detectCsvShape → analyzeUpload | analyzeAr │
+│     /actions, /stats → Prisma reads (Command Center, action feed) │
+│     /agent/context   → reads agent/skills, agent/knowledge,       │
+│                        agent/RULES.md for the Agent Console panel │
+│     /auth, /auth/me  → session cookie helpers                     │
+│     /documents       → Markdown report CRUD                       │
+│     /data-sources    → CSV upload listing + Google Sheet linking  │
+│                                                                      │
+│   Shell UI (app/(shell)/layout.tsx):                                │
+│     Sidebar ── NAV_HOME + JOURNEYS + BUILD_NAV + OBSERVE_NAV       │
+│     Glass look + AgentStatusBar                                     │
+└─────────────────┬───────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─── lib/agent — the gitclaw adapter ────────────────────────────────┐
+│                                                                      │
+│   lib/agent/index.ts                                                 │
+│     ┌────────────────────────────────────────────────────────┐     │
+│     │ chatWithAgent(userId, message, actionId, callbacks)    │     │
+│     │ analyzeUpload(userId, dataSourceId, fileName, count)   │     │
+│     │ analyzeArUpload(userId, dataSourceId, fileName, count) │     │
+│     │ generateReport(userId, type)                           │     │
+│     └────────────────────────────────────────────────────────┘     │
+│                                                                      │
+│   Each entry point:                                                  │
+│     1. buildContext(userId)  ── pulls recent data sources,         │
+│        pending actions, chat history, and decision events from    │
+│        Prisma into a rich systemPromptSuffix                       │
+│     2. Appends SKILL_CONTENT (pre-loaded at module boot) so the   │
+│        model never needs an extra `read` round-trip to find a     │
+│        skill                                                        │
+│     3. createFinancialTools(userId) ── returns 13 tools bound to  │
+│        this user's scope                                            │
+│     4. buildAllowedTools(tools) ── union of custom tools +        │
+│        gitclaw builtins (read, memory, task_tracker,              │
+│        skill_learner)                                               │
+│     5. gitclaw.query({ prompt, dir: agent/, model,                │
+│                        systemPromptSuffix, tools,                  │
+│                        allowedTools, maxTurns: 10,                 │
+│                        constraints: { temperature: 0.3 } })        │
+│                                                                      │
+│   lib/agent/classify-event.ts                                       │
+│     Maps GCMessage (gitclaw's typed event union) → PipelineStep   │
+│     so the UI can render a live timeline of what the agent did.   │
+└─────────────────┬───────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─── gitclaw SDK ────────────────────────────────────────────────────┐
+│                                                                      │
+│   - Orchestrates the LLM loop (Lyzr Agent Studio v4 proxy)         │
+│   - Loads the agent/ directory as a "git-agent"                     │
+│   - Exposes built-in tools to the model:                           │
+│       read           scan agent/skills/, agent/knowledge/          │
+│       memory         git-backed persistence (load / save / learn) │
+│       task_tracker   multi-step task state within a session       │
+│       skill_learner  crystallize repeated patterns into new       │
+│                      skills (writes a new SKILL.md)                 │
+│   - Streams back a typed async iterator of GCMessages:              │
+│       system  / tool_use / tool_result / delta / assistant         │
+└─────────────────┬───────────────────────────────────────────────────┘
+                  │
+     ┌────────────┼────────────────────────────────┐
+     │            │                                 │
+     ▼            ▼                                 ▼
+┌ agent/ ─┐  ┌ Lyzr Agent Studio v4 ─┐  ┌ Prisma → SQLite (dev.db) ─┐
+│ SOUL.md │  │  LLM inference via      │  │  User                     │
+│ RULES.md│  │  agent-prod.studio      │  │  DataSource               │
+│ DUTIES  │  │  .lyzr.ai/v4            │  │  FinancialRecord          │
+│ skills/ │  │  model id:               │  │  Invoice                  │
+│ knowledge│ │  69d43ccef008dd0…       │  │  Action                   │
+│ memory/  │ │  (served behind          │  │  ActionEvent              │
+│ examples/│ │  OpenAI-compatible       │  │  ChatMessage              │
+│          │ │  auth)                   │  │  Document                 │
+└──────────┘ └─────────────────────────┘  └──────────────────────────┘
+```
+
+### Chat request flow (Agent Console)
+
+```
+User types in ChatInput
+        │
+        ▼
+useChatStream.sendMessage(text, {journeyId?})
+        │
+        │   POST /api/chat  { userId, message, actionId?, journeyId? }
+        ▼
+app/api/chat/route.ts
+  ├── resetStepCounter()
+  ├── emit SSE: pipeline_step { id: "step-0", type: "agent_init", status: "running" }
+  └── chatWithAgent(userId, msg, actionId, { onDelta, onComplete, onError })
+                │
+                ▼
+       lib/agent/index.ts
+         buildContext(userId) ───────┐
+         createFinancialTools(userId)│
+         gitclaw.query({…})          │
+                │                    │
+                │  async iterator    │
+                ▼                    │
+       for await (msg of result) {   │
+         msg.type === "delta"   → onDelta(msg.content)
+         msg.type === "assistant" → final content
+         msg.type === "system"  → error passthrough
+       }                             │
+                │                    │
+                │                    │
+                ▼                    │
+       SSE stream back:              │
+         pipeline_step  ─────────────┤  (classify-event maps tool_use
+         delta           ────────────┤   events into PipelineStep rows
+         done            ────────────┤   like "Analyzing financial data",
+         error           ────────────┘   "Loading skill — variance-review")
+                │
+                ▼
+       useChatStream buffers + updates state
+                │
+                ▼
+       <PipelineContainer> collapsible step rows
+       <MessageBubble>     streamed markdown response
+```
+
+---
+
+## How gitclaw / git-agent Works Here
+
+[**gitclaw**](https://www.npmjs.com/package/gitclaw) is the SDK this app uses to talk to the Lyzr Agent Studio LLM. The core idea is that an **agent is a directory**, not a configuration object. You point gitclaw at a folder, it reads the files as the agent's mind, and a handful of built-in tools let the model `read` its own skills on demand and `memory`-persist learnings between sessions as git commits.
+
+### 1. The agent lives in `agent/`
+
+```
+agent/
+├── SOUL.md                  # identity, communication style, persona
+├── RULES.md                 # 12 hard behavioral constraints
+├── DUTIES.md                # proactive triggers — what to do on upload/scan/chat
+├── agent.yaml               # metadata + default tools list
+├── config/                  # (reserved)
+├── skills/
+│   ├── variance-review/SKILL.md     # variance detection workflow
+│   ├── ar-followup/SKILL.md         # AR dunning workflow
+│   ├── monthly-close/SKILL.md       # close orchestration
+│   └── budget-reforecast/SKILL.md
+├── knowledge/
+│   ├── variance-thresholds.md
+│   ├── common-drivers.md
+│   ├── report-formats.md
+│   └── index.yaml
+├── examples/                # few-shot examples for the model
+├── memory/
+│   └── MEMORY.md            # learned facts, committed to git by the `memory` tool
+└── workflows/               # (reserved)
+```
+
+### 2. Each request is a `gitclaw.query(...)` call
+
+`lib/agent/index.ts` has four entry points (`chatWithAgent`, `analyzeUpload`, `analyzeArUpload`, `generateReport`) that all share the same shape:
+
+```ts
+import { query } from "gitclaw";
+
+const result = query({
+  prompt,                                   // the user message (or a workflow prompt)
+  dir: process.cwd() + "/agent",            // where the git-agent lives
+  model: "lyzr:<agent-id>@https://agent-prod.studio.lyzr.ai/v4",
+  systemPromptSuffix: context,              // buildContext() + pre-loaded SKILL_CONTENT
+  tools: createFinancialTools(userId),      // 13 custom tools, bound to this user
+  allowedTools: buildAllowedTools(tools),   // custom tools + gitclaw builtins
+  maxTurns: 10,
+  constraints: { temperature: 0.3 },
+});
+
+for await (const msg of result) {
+  // msg is a typed GCMessage — system / tool_use / tool_result / delta / assistant
+}
+```
+
+### 3. `buildContext()` is the live working memory
+
+Before every query the adapter pulls the last 10 data sources, 20 pending actions, 10 chat messages, and 20 decision events from Prisma and renders them into a markdown **systemPromptSuffix**. That gives the model a compact snapshot of "what the user has in front of them right now" — without requiring the LLM to call tools just to get its bearings.
+
+### 4. Skills are **pre-loaded** at module boot
+
+Rather than letting gitclaw's default behavior force the model to `read` each `SKILL.md` on demand, `loadSkillContent()` reads every `agent/skills/<name>/SKILL.md` once when the module loads and inlines them into the system prompt under a `## Pre-loaded Skill Instructions` heading. This removes one full tool round-trip per skill activation — a significant latency win because each round-trip costs a Lyzr inference call.
+
+### 5. Tools fall into two buckets
+
+**Custom financial tools** (13, defined in `lib/agent/tools.ts`):
+
+| Tool | Purpose |
+|---|---|
+| `search_records` | Query `FinancialRecord` by account / period / category |
+| `analyze_financial_data` | Compute variances, flag by threshold, group by category |
+| `create_actions` | Batch-insert variance actions (dedupe by headline) |
+| `update_action` | Change action status |
+| `generate_commentary` | Produce variance commentary |
+| `draft_email` | Draft variance follow-up email |
+| `generate_variance_report` | Gather summary data for a Monthly Variance Report |
+| `save_document` | Persist a markdown report to the `Document` table |
+| `scan_ar_aging` | Bucket open invoices by days overdue |
+| `create_ar_actions` | Batch-insert AR follow-up actions (dedupe by invoice) |
+| `draft_dunning_email` | Draft tone-appropriate collection email |
+| `update_invoice_status` | Transition invoice state + record `ActionEvent` |
+| `generate_ar_summary` | Gather summary data for an AR Aging Summary report |
+
+**gitclaw built-in tools** (exposed via `buildAllowedTools`, defined in `lib/agent/allowed-tools.ts`):
+
+| Built-in | Purpose in this app |
+|---|---|
+| `read` | Load files from `agent/` on demand — used for `knowledge/*.md` and dynamic file reads, since `SKILL.md` files are already pre-loaded |
+| `memory` | Git-backed persistent memory. `action: "load"` reads `agent/memory/MEMORY.md`; `action: "save"` appends a learned fact and **creates a git commit** so the knowledge survives across deploys |
+| `task_tracker` | Multi-step task state within a session (the "Discovering relevant skills" step in the pipeline UI) |
+| `skill_learner` | Crystallize repeated patterns into a new `SKILL.md`. Deliberately opt-in via the allow-list |
+
+Deliberately **excluded**: `cli` (arbitrary shell on the server) and `write` (arbitrary file writes). `memory` handles its own commits; `skill_learner` handles its own writes through a controlled interface.
+
+### 6. Events are classified into UI pipeline steps
+
+`lib/agent/classify-event.ts` takes a `GCMessage` from the gitclaw async iterator and turns it into a `PipelineStep` that the Agent Console renders as a collapsible row. The mapping is:
+
+| GCMessage event | PipelineStep type | Visible label |
+|---|---|---|
+| `system` subtype `session_start` | `agent_init` | "Initializing agent..." |
+| `tool_use` name `task_tracker` action `begin` | `skill_discovery` | "Discovering relevant skills..." |
+| `tool_use` name `memory` action `load` | `memory_load` | "Loading agent memory..." |
+| `tool_use` name `memory` action `save` | `file_write` | "Saving to memory..." |
+| `tool_use` name `read` path `skills/*/SKILL.md` | `skill_load` | "Loading skill — <name>" |
+| `tool_use` name `read` path `memory/wiki/*` | `file_read` | "Reading wiki — <page>" |
+| `tool_use` name `write` path `memory/wiki/*` | `wiki_update` | "Updating wiki — <page>" |
+| `tool_use` any custom tool (e.g. `analyze_financial_data`) | `tool_exec` | Human-readable label from `TOOL_LABELS` |
+
+The Agent Console subscribes to the `pipeline_step` SSE events and renders them via `components/pipeline/pipeline-container.tsx`, so the user sees the agent's reasoning unfold in real time alongside the streamed response text.
+
+### 7. The learning loop
+
+When an upload finds something durable about the business (recurring vendor, unusual category mix, chronic late-payer, etc.), the prompts in `analyzeUpload` and `analyzeArUpload` explicitly instruct the agent to call `memory` with `action: "save"` and a short `learned: ...` commit message. Because `memory` commits to git, every deploy of the app starts with everything the previous sessions taught it. That's why `agent/memory/MEMORY.md` and per-skill counters (e.g. `agent/skills/variance-review/SKILL.md` frontmatter) are **tracked in git**, not gitignored.
 
 ---
 
@@ -63,19 +308,21 @@ Proactive AI-powered financial operations assistant. Detects budget variances, m
 
 | Layer | Technology | Version |
 |---|---|---|
-| Framework | Next.js (App Router) | 16.2.2 |
+| Framework | Next.js (App Router) | **16.2.2** |
 | UI | React | 19.2.4 |
 | Styling | Tailwind CSS | v4 |
 | Icons | lucide-react | 1.7.0 |
+| Animation | framer-motion | 12.38.0 |
+| Graph viz | d3 | 7.9.0 |
 | Charts | Recharts | 3.8.1 |
 | Markdown | react-markdown | 10.1.0 |
 | Database | SQLite via Prisma | 6.19.3 |
-| Agent SDK | gitclaw | 1.3.3 |
+| Agent SDK | **gitclaw** | 1.3.3 |
 | AI Engine | Lyzr Agent Studio v4 | — |
 | Testing | Vitest | 4.1.3 |
 | Language | TypeScript | 5.x |
 
-> **Important:** This project uses Next.js 16.2.2 which has breaking changes from earlier versions. Check `node_modules/next/dist/docs/` for the current API reference before modifying route handlers or other framework-level code.
+> **Important:** This project is on Next.js **16.2.2**, which has breaking changes from every version before it. Before touching routing, middleware (`proxy.ts`), or server-component / client-component boundaries, read `node_modules/next/dist/docs/` for the current API.
 
 ---
 
@@ -97,14 +344,11 @@ npm install
 ### Database Setup
 
 ```bash
-# Generate the Prisma client
 npx prisma generate
-
-# Run migrations (creates SQLite dev.db)
 npx prisma migrate dev
 ```
 
-If migrations fail due to drift (tables created outside migrations), reset first:
+If migrations drift:
 
 ```bash
 npx prisma migrate reset --force
@@ -117,11 +361,14 @@ npx prisma migrate dev
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). You'll be redirected to `/login` — enter any email to create a demo account.
+Open <http://localhost:3000>. You'll be redirected to `/login` — enter any email to create a demo session. After login you land on the Command Center.
 
-### Load Sample Data
+### Try the app
 
-Once logged in, click **"Try with Sample Data"** on the empty dashboard, or upload your own CSV from the Data Sources page.
+- **Command Center:** type in the search bar → it hands off to the Agent Console with `?message=...`
+- **Agent Console:** ask anything; the pipeline panel shows skill loads, memory reads, and tool calls live
+- **Data Sources → Upload:** drop a CSV; the agent auto-detects shape (variance or AR) and runs the matching workflow
+- **Domain journeys:** click any journey in the sidebar to see a scoped workspace with a docked chat panel seeded with journey context
 
 ---
 
@@ -137,15 +384,15 @@ DATABASE_URL="file:./dev.db"
 LYZR_API_KEY="sk-your-lyzr-api-key"
 OPENAI_API_KEY="sk-your-lyzr-api-key"   # Same key — gitclaw uses OpenAI-compatible auth
 
-# Google Gemini (OPTIONAL — legacy fallback for CSV column mapper)
+# Google Gemini (OPTIONAL — fallback for CSV column mapping and chat fallback)
 GEMINI_API_KEY="your-gemini-key"
 ```
 
-**Key details:**
-- `OPENAI_API_KEY` must match `LYZR_API_KEY` — the gitclaw SDK routes Bearer auth through the OpenAI-compatible endpoint
-- The agent model config is `lyzr:69d43ccef008dd037bad64d7@https://agent-prod.studio.lyzr.ai/v4`
-- `GEMINI_API_KEY` is optional — used as a fallback when the Lyzr engine is unavailable for CSV column mapping
-- The app checks for any of the three keys at startup and returns 503 if none are configured
+Key details:
+
+- `OPENAI_API_KEY` must match `LYZR_API_KEY` — gitclaw routes bearer auth through an OpenAI-compatible endpoint, and `lib/agent/index.ts` copies `LYZR_API_KEY` into `OPENAI_API_KEY` at module load.
+- The agent model is hardcoded to `lyzr:69d43ccef008dd037bad64d7@https://agent-prod.studio.lyzr.ai/v4`. Note that the agent **id** (`69d43cce...`) is distinct from the Lyzr Studio URL slug.
+- `GEMINI_API_KEY` is optional; the chat route falls back to a local placeholder if none of the keys are present.
 
 ---
 
@@ -153,221 +400,140 @@ GEMINI_API_KEY="your-gemini-key"
 
 ```
 lyzr-ai-cfo/
-├── agent/                         # Agent personality, rules, and skills
-│   ├── SOUL.md                    # Agent identity and communication style
-│   ├── RULES.md                   # Behavioral constraints (12 rules)
-│   ├── DUTIES.md                  # Proactive triggers (upload, scan, chat)
-│   ├── skills/
-│   │   ├── variance-review/       # Variance analysis workflow
-│   │   ├── ar-followup/           # AR dunning workflow
-│   │   ├── monthly-close/         # Placeholder
-│   │   └── budget-reforecast/     # Placeholder
-│   ├── knowledge/                 # Domain reference (thresholds, formats, drivers)
-│   └── examples/                  # Few-shot examples for the agent
+├── agent/                         # The git-agent (see "How gitclaw works")
 │
-├── app/                           # Next.js App Router
-│   ├── (dashboard)/               # Authenticated dashboard routes
-│   │   ├── page.tsx               # Main dashboard (feed + briefing + chat)
-│   │   ├── data-sources/page.tsx  # Data sources management
-│   │   └── settings/page.tsx      # Settings page
-│   ├── api/                       # API route handlers
-│   │   ├── actions/               # Action CRUD + AR operations
-│   │   │   ├── route.ts           # GET (list) + POST (create)
-│   │   │   └── [id]/
-│   │   │       ├── route.ts       # PATCH (update status)
-│   │   │       └── ar/route.ts    # GET (draft) + POST (mark_sent/snooze/escalate)
-│   │   ├── auth/                  # Auth routes
-│   │   ├── chat/route.ts          # SSE streaming agent chat
-│   │   ├── chart/
-│   │   │   └── budget-vs-actual/route.ts  # Budget chart data
+├── app/
+│   ├── (shell)/                   # Authenticated AgenticOS shell
+│   │   ├── layout.tsx             # Sidebar + scrollable main area
+│   │   ├── page.tsx               # Command Center — search, journeys, insights
+│   │   ├── agent-console/         # Chat + live pipeline + context panel
+│   │   │   ├── page.tsx           # server wrapper (Suspense for useSearchParams)
+│   │   │   └── agent-console-client.tsx
+│   │   ├── monthly-close/
+│   │   ├── financial-reconciliation/
+│   │   ├── regulatory-capital/
+│   │   ├── ifrs9-ecl/
+│   │   ├── daily-liquidity/
+│   │   ├── regulatory-returns/
+│   │   ├── agent-studio/          # Build — agent cards
+│   │   ├── skills-manager/        # Build — skills grid (real + sample)
+│   │   ├── knowledge-base/        # Build — D3 wiki graph
+│   │   ├── integrations/          # Build — Composio + Direct API
+│   │   ├── skill-flows/           # Build — flow visualizations
+│   │   ├── decision-inbox/        # Observe — decisions with tracing SVG
+│   │   ├── agent-runs/            # Observe — run table + slide-over
+│   │   ├── compliance/            # Observe — guardrails, frameworks, schedule
+│   │   ├── audit-trail/           # Observe — timeline of events
 │   │   ├── data-sources/
-│   │   │   ├── route.ts           # List data sources (supports shape filter)
-│   │   │   ├── link-sheet/route.ts        # Link a Google Sheet CSV URL
-│   │   │   └── [id]/reanalyze/route.ts    # Re-run agent on an existing source
-│   │   ├── stats/route.ts         # Dashboard stats strip data
-│   │   ├── seed-demo/route.ts     # Seed demo variance data
-│   │   └── upload/route.ts        # CSV upload (auto-detects variance vs AR)
-│   ├── login/page.tsx             # Login page
-│   └── layout.tsx                 # Root layout
+│   │   ├── documents/
+│   │   └── settings/
+│   ├── api/
+│   │   ├── chat/route.ts          # SSE streaming (pipeline_step | delta | done | error)
+│   │   ├── agent/context/route.ts # Lists skills / knowledge / guardrails for the Console
+│   │   ├── upload/route.ts        # CSV upload → shape detection → agent analysis
+│   │   ├── actions/               # Action CRUD + AR operations
+│   │   ├── auth/                  # Session cookie helpers
+│   │   ├── chart/                 # Budget vs actual chart data
+│   │   ├── data-sources/
+│   │   ├── documents/
+│   │   ├── seed-demo/
+│   │   └── stats/
+│   ├── login/page.tsx
+│   └── layout.tsx
 │
-├── components/                    # React components
-│   ├── chat/
-│   │   ├── chat-panel.tsx         # Chat container (first message = morning briefing)
-│   │   ├── chat-input.tsx         # Message input
-│   │   └── message-bubble.tsx     # Chat message rendering
-│   ├── dashboard/
-│   │   └── budget-chart.tsx       # Recharts budget vs actual bar chart
-│   ├── data-sources/
-│   │   ├── upload-area.tsx        # File upload dropzone
-│   │   ├── link-sheet-area.tsx    # Google Sheet CSV link form
-│   │   └── source-list.tsx        # Data source list with re-analyze
-│   ├── feed/
-│   │   ├── stats-strip.tsx        # Counts + AR donut + top variances
-│   │   ├── action-card.tsx        # Compact 52px row
-│   │   ├── action-modal.tsx       # Right-side slide-over with full detail
-│   │   ├── action-feed.tsx        # Scrollable feed with filtering
-│   │   └── filter-bar.tsx         # Type/Severity/Status filter chips
-│   └── layout/
-│       ├── sidebar.tsx            # Navigation sidebar
-│       └── resizable-split-pane.tsx # Resizable layout container
+├── components/
+│   ├── shell/                     # Sidebar, nav-item, agent-status-bar
+│   ├── command-center/            # SearchBar, JourneyCard, AgentInsights, ActionsRequired
+│   ├── agent-console/             # ChatInput, AgentContextPanel
+│   ├── pipeline/                  # PipelineContainer, PipelineStep, StepIcon
+│   ├── journey/                   # JourneyPage, JourneyChatPanel, NudgeChips
+│   ├── build/                     # WikiGraph (D3), FlowStepViz
+│   ├── observe/                   # DecisionTracingSvg, ExecutionTracePanel
+│   ├── shared/                    # MetricCard, StatusBadge, PriorityBadge, SampleDataBadge
+│   ├── data-sources/              # Upload area, source list, sheet linker
+│   └── documents/                 # Markdown rendering
 │
-├── lib/                           # Shared libraries
+├── hooks/
+│   └── use-chat-stream.ts         # Client-side SSE consumer
+│
+├── lib/
 │   ├── agent/
-│   │   ├── index.ts               # Agent query functions (analyzeUpload, analyzeArUpload, chat)
-│   │   └── tools.ts               # 10 agent tools + shared helpers
-│   ├── csv/
-│   │   ├── detect-shape.ts        # CSV classifier (variance/ar/unknown)
-│   │   ├── variance-parser.ts     # Shared variance parser (upload + re-analyze)
-│   │   ├── ar-parser.ts           # AR aging CSV parser
-│   │   └── llm-mapper.ts          # LLM column mapping fallback
-│   ├── auth.ts                    # Session cookie helpers
-│   ├── db.ts                      # Prisma client singleton
-│   ├── types.ts                   # Shared TypeScript types
-│   └── utils.ts                   # Formatting utilities
+│   │   ├── index.ts               # gitclaw adapter — chatWithAgent, analyzeUpload, …
+│   │   ├── tools.ts               # 13 custom tools + shared helpers
+│   │   ├── allowed-tools.ts       # Custom tools ∪ gitclaw builtins
+│   │   ├── pipeline-types.ts      # StepType / PipelineStep / FrontendEvent
+│   │   └── classify-event.ts      # GCMessage → PipelineStep mapper
+│   ├── csv/                       # Shape detection + variance/AR parsers + LLM mapper
+│   ├── config/
+│   │   ├── journeys.ts            # NavItem config for sidebar
+│   │   ├── journey-sample-data.ts # Per-journey sample metrics
+│   │   ├── sample-build-data.ts
+│   │   ├── sample-insights.ts
+│   │   └── sample-observe-data.ts
+│   ├── auth.ts
+│   ├── db.ts                      # Prisma singleton
+│   ├── types.ts
+│   └── utils.ts
 │
 ├── prisma/
-│   ├── schema.prisma              # Database schema (6 models)
-│   ├── seed.ts                    # Demo variance seed
-│   └── migrations/                # Prisma migrations
+│   ├── schema.prisma              # 8 models
+│   ├── seed.ts
+│   └── migrations/
 │
-├── public/
-│   ├── sample-ar-aging.csv        # 8 sample AR invoices
-│   ├── sample-budget-vs-actual.csv
-│   └── sample-q1-budget.csv
-│
-├── scripts/
-│   └── seed-ar.ts                 # AR seed script
-│
-├── __tests__/                     # Vitest test suite
-│   └── lib/
-│       ├── utils.test.ts
-│       ├── invoice-state.test.ts
-│       ├── agent/ar-tools.test.ts
-│       └── csv/
-│           ├── detect-shape.test.ts
-│           ├── ar-parser.test.ts
-│           └── ar-parser-dates.test.ts
-│
+├── proxy.ts                       # Next 16 middleware — cookie gate
+├── public/                        # Sample CSVs + doc markdown
+├── __tests__/                     # Vitest unit tests
 └── docs/superpowers/specs/        # Design specs
-```
-
----
-
-## Architecture
-
-### Agent-First Design
-
-The gitclaw agent is the **sole source of truth** for all financial analysis. Next.js routes are thin wrappers — they receive user input, pass it to the agent, and return the agent's response.
-
-```
-User Action (upload CSV, click button, send chat)
-    │
-    ▼
-Next.js API Route (thin wrapper)
-    │
-    ▼
-gitclaw agent (SOUL + RULES + DUTIES + skills)
-    │
-    ├── Calls tools (search_records, analyze, create_actions, etc.)
-    │       │
-    │       ▼
-    │   Prisma (SQLite)
-    │
-    ▼
-SSE stream back to UI (actions feed, briefing, chat)
-```
-
-### Key Principles
-
-1. **Agent creates actions, not deterministic code** — variances and AR items are detected by the LLM agent using tools, not hard-coded thresholds in JavaScript
-2. **One feed, multiple skills** — variance and AR follow-up cards render in the same feed with the same card component, branching only on `action.type`
-3. **Two independent state machines** — `Invoice.status` (business lifecycle) and `Action.status` (workflow lifecycle) are separate; transitions between them are wired only in the AR route handler
-4. **CSV shape detection** — upload route auto-classifies CSVs and routes to the correct parser; no user confirmation step
-
-### Data Flow
-
-```
-CSV Upload → detectCsvShape(headers) → variance? → parseRows → FinancialRecord → analyzeUpload (agent)
-                                     → ar?       → parseArCsv → Invoice         → analyzeArUpload (agent)
-                                     → unknown?  → 400 error
 ```
 
 ---
 
 ## Agent System
 
-The agent lives in the `agent/` directory and is loaded by gitclaw at query time.
-
-### Files
+The agent is a directory of markdown, not a config object. `lib/agent/index.ts` is the single gateway between the app and gitclaw. See [How gitclaw / git-agent Works Here](#how-gitclaw--git-agent-works-here) for the full flow.
 
 | File | Purpose |
 |---|---|
-| `SOUL.md` | Identity, personality, communication style, domain knowledge |
-| `RULES.md` | 12 behavioral constraints (data integrity, severity accuracy, no sending emails, etc.) |
-| `DUTIES.md` | Proactive triggers — what the agent does on upload, scan, chat, and action management |
-| `skills/variance-review/SKILL.md` | Structured variance analysis workflow |
-| `skills/ar-followup/SKILL.md` | AR dunning email workflow |
-| `knowledge/` | Reference data for thresholds, report formats, common variance drivers |
-| `examples/` | Few-shot examples for the agent |
-
-### Tools (10 total)
-
-Defined in `lib/agent/tools.ts`, returned from `createFinancialTools(userId)`:
-
-| Tool | Purpose |
-|---|---|
-| `search_records` | Query FinancialRecord by account/period/category |
-| `analyze_financial_data` | Compute variances, flag by threshold, group by category |
-| `create_actions` | Batch-insert variance/anomaly/recommendation actions (dedupes by headline) |
-| `update_action` | Change action status |
-| `generate_commentary` | Produce variance commentary for reports |
-| `draft_email` | Draft variance follow-up email |
-| `scan_ar_aging` | Bucket open invoices by days overdue (info/warning/critical) |
-| `create_ar_actions` | Batch-insert AR follow-up actions (dedupes by invoiceId) |
-| `draft_dunning_email` | Draft tone-appropriate collection email, cache to action.draftBody |
-| `update_invoice_status` | Transition invoice state + record ActionEvent |
-
-### Shared Helpers
-
-Exported from `lib/agent/tools.ts` for reuse by the AR API route:
-
-- `inferToneFromInvoice(dueDate)` — returns `friendly` (1-14d), `firm` (15-44d), or `escalation` (45d+)
-- `buildDunningEmailBody(invoice, tone)` — generates the email text
+| `SOUL.md` | Identity, persona, communication style |
+| `RULES.md` | 12 behavioral constraints (data integrity, severity accuracy, no sending emails, …) |
+| `DUTIES.md` | Proactive triggers — what the agent does on upload, scan, chat, action management |
+| `skills/<name>/SKILL.md` | One file per workflow. **Pre-loaded at module boot** so the model doesn't spend a tool round-trip to find them |
+| `knowledge/*.md` | Reference data on variance thresholds, common drivers, report formats |
+| `memory/MEMORY.md` | Learnings persisted via git commits by the `memory` tool |
+| `examples/*.md` | Few-shot examples |
+| `agent.yaml` | Metadata + default tool list |
 
 ---
 
 ## Data Model
 
-Six Prisma models in `prisma/schema.prisma`:
+Eight Prisma models in `prisma/schema.prisma`:
 
-### User
-Standard user account. Fields: `id`, `lyzrAccountId`, `email`, `name`, `credits`.
+| Model | Purpose |
+|---|---|
+| **User** | `id`, `lyzrAccountId`, `email`, `name`, `credits` |
+| **DataSource** | An uploaded CSV or linked Google Sheet. `type`, `status` (processing/ready/error), `recordCount`, `metadata` (JSON with `{shape, headers}`) |
+| **FinancialRecord** | One row of variance data (`account`, `period`, `actual`, `budget`, `category`) |
+| **Invoice** | One AR aging record. `status` (open/sent/snoozed/escalated/paid), `lastDunnedAt?`, `snoozedUntil?`. Unique on `(dataSourceId, invoiceNumber)` |
+| **Action** | Agent-created feed item. `type` (variance/anomaly/recommendation/ar_followup), `severity`, `headline`, `detail`, `driver`, `status`, `invoiceId?`, `draftBody?` |
+| **ActionEvent** | Audit trail for action status changes (`fromStatus` → `toStatus`) |
+| **ChatMessage** | Persisted chat history; surfaced into `buildContext()` |
+| **Document** | Markdown reports generated by `save_document` (`type`: variance_report / ar_summary) |
 
-### DataSource
-Represents an uploaded CSV. Fields: `id`, `userId`, `type` ("csv"), `name`, `status` ("processing"/"ready"/"error"), `recordCount`, `metadata` (JSON string with `{shape: "variance"|"ar", headers: [...]}`).
-
-### FinancialRecord
-One row of variance data. Fields: `account`, `period`, `actual`, `budget`, `category`. Belongs to a DataSource.
-
-### Invoice (V1.5)
-One AR aging invoice. Fields: `invoiceNumber`, `customer`, `customerEmail?`, `amount`, `invoiceDate`, `dueDate`, `status` ("open"/"sent"/"snoozed"/"escalated"/"paid"), `lastDunnedAt?`, `snoozedUntil?`. Unique on `(dataSourceId, invoiceNumber)`.
-
-### Action
-A feed item created by the agent. Fields: `type` ("variance"/"anomaly"/"recommendation"/"ar_followup"), `severity` ("critical"/"warning"/"info"), `headline`, `detail`, `driver`, `status` ("pending"/"flagged"/"dismissed"/"approved"), `invoiceId?`, `draftBody?`.
-
-### ActionEvent
-Audit trail for action status changes. Fields: `actionId`, `userId`, `fromStatus`, `toStatus`.
-
-### Entity Relationships
+### Entity relationships
 
 ```
 User ──< DataSource ──< FinancialRecord
-  │          │
+  │          │                │
   │          └──< Invoice ──< Action ──< ActionEvent
   │                              │
-  └──────────────< Action ───────┘
+  │          ┌───────────────────┘
+  │          │
+  ├──< Action
   │
-  └──< ChatMessage
+  ├──< ChatMessage ──(optional)──> Action
+  │
+  └──< Document
 ```
 
 ---
@@ -376,25 +542,27 @@ User ──< DataSource ──< FinancialRecord
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/auth` | POST | Create account / login (sets session cookie) |
+| `/api/auth` | POST / DELETE | Create session / logout |
 | `/api/auth/me` | GET | Current user from session cookie |
-| `/api/upload` | POST | CSV upload — auto-detects shape, parses, triggers agent analysis |
-| `/api/actions` | GET | List actions for user (supports type/severity/status filters) |
-| `/api/actions` | POST | Create a single action |
-| `/api/actions/[id]` | PATCH | Update action status (generic: pending/flagged/dismissed/approved) |
-| `/api/actions/[id]/ar` | GET | Return (and lazily generate) dunning email draft |
-| `/api/actions/[id]/ar` | POST | AR operations: `{op: "mark_sent"}`, `{op: "snooze", days: 7}`, `{op: "escalate"}` |
-| `/api/chat` | POST | SSE streaming agent chat |
+| `/api/chat` | POST | **SSE streaming agent chat** (emits `pipeline_step`, `delta`, `done`, `error`) |
+| `/api/agent/context` | GET | `{skills, dataFiles, guardrails}` read from `agent/` — powers the Agent Console context panel |
+| `/api/upload` | POST | CSV upload → `detectCsvShape` → `analyzeUpload` or `analyzeArUpload` |
+| `/api/actions` | GET / POST | List (with filters) or create actions |
+| `/api/actions/[id]` | PATCH | Update action status |
+| `/api/actions/[id]/ar` | GET / POST | Lazy-draft dunning email, or run AR ops (`mark_sent` / `snooze` / `escalate`) |
 | `/api/chart/budget-vs-actual` | GET | Aggregated data for the budget chart |
-| `/api/stats` | GET | Dashboard stats strip (counts, AR total, top variances) |
-| `/api/data-sources` | GET | List data sources for user (supports `?shape=variance\|ar`) |
+| `/api/stats` | GET | Command Center stats (counts, AR donut, top variances) |
+| `/api/data-sources` | GET | List for user (supports `?shape=variance\|ar`) |
 | `/api/data-sources/link-sheet` | POST | Link a Google Sheet by published CSV URL |
-| `/api/data-sources/[id]/reanalyze` | POST | Re-run agent analysis on an existing source |
+| `/api/data-sources/[id]/reanalyze` | POST | Re-run agent on an existing source |
+| `/api/documents` | GET / POST | List / create markdown reports |
+| `/api/documents/[id]` | GET | Fetch a single document |
+| `/api/documents/generate` | POST | Ask the agent to generate a fresh report |
 | `/api/seed-demo` | POST | Seed demo variance data |
 
-### AR Operations Detail
+### AR operations detail
 
-All AR POST operations run inside `prisma.$transaction` to atomically update both the Invoice and Action:
+All AR POST operations run inside `prisma.$transaction` to atomically update both Invoice and Action:
 
 | Operation | Invoice.status | Action.status | Side Effects |
 |---|---|---|---|
@@ -404,76 +572,40 @@ All AR POST operations run inside `prisma.$transaction` to atomically update bot
 
 ---
 
-## UI Components
-
-### Dashboard (`app/(dashboard)/page.tsx`)
-
-The main view is a resizable split pane:
-- **Left:** `StatsStrip` (counts + AR donut + top variances) above a compact `ActionFeed`
-- **Right:** `BudgetChart` (top) + `ChatPanel` (bottom). The morning briefing streams into chat as the first agent message.
-
-### Stats Strip (`components/feed/stats-strip.tsx`)
-
-Three tiles: pending/flagged counts, AR total with a donut by bucket, and the top 3 variances by absolute delta. Fed by `/api/stats`.
-
-### Action Card (`components/feed/action-card.tsx`)
-
-Compact 52px row: severity dot, headline, amount, status chip. Clicking a row selects it and opens `ActionModal`.
-
-### Action Modal (`components/feed/action-modal.tsx`)
-
-Right-side slide-over (portal, esc-to-close) showing full action detail plus the workflow buttons:
-
-**Variance/Anomaly/Recommendation:** Approve, Flag, Ask AI, Dismiss.
-
-**AR Follow-up (`ar_followup`):** Copy & Mark Sent, Snooze 7d, Escalate, Ask AI, Dismiss. The dunning draft is lazy-loaded from `GET /api/actions/[id]/ar` on first open. Includes an inline history section.
-
-### Filter Bar (`components/feed/filter-bar.tsx`)
-
-Three filter groups: Type (All/Variance/Anomaly/Rec./AR), Severity (All/Critical/Warning/Info), Status (All/Pending/Flagged/Dismissed).
-
-### Budget Chart (`components/dashboard/budget-chart.tsx`)
-
-Recharts bar chart driven by `/api/chart/budget-vs-actual`. Replaces the standalone morning briefing panel.
-
----
-
 ## CSV Ingestion
 
-### Auto-Detection Pipeline
+### Auto-detection pipeline
 
-1. User uploads a CSV via the upload area
+1. User uploads a CSV via the Data Sources upload area
 2. `parseCSV(text)` splits into headers + rows
-3. `detectCsvShape(headers)` classifies using regex fast-path:
+3. `detectCsvShape(headers)` classifies using a regex fast-path:
    - **AR:** headers match invoice + (due date | customer | amount due) — at least 2 of 4 signals
    - **Variance:** headers match both budget and actual
-   - **Unknown:** falls back to LLM classification, returns 400 if still unknown
-4. Routes to the appropriate parser
+   - **Unknown:** falls back to LLM classification via `inferColumnMapping()` (Gemini if `GEMINI_API_KEY` is set); returns 400 if still unknown
+4. Routes to the matching parser and triggers the appropriate agent workflow (`analyzeUpload` or `analyzeArUpload`)
 
-### Variance Parser (existing)
+### Variance parser
 
 - `autoDetectColumns(headers)` — regex matching for account, period, actual, budget, category
-- LLM fallback via `inferColumnMapping()` for non-standard headers
-- Inserts `FinancialRecord` rows, triggers `analyzeUpload()` agent call
+- Inserts `FinancialRecord` rows, triggers `analyzeUpload()`
 
-### AR Parser (`lib/csv/ar-parser.ts`)
+### AR parser (`lib/csv/ar-parser.ts`)
 
-- Required fields: invoiceNumber, customer, amount, invoiceDate, dueDate
+- Required: invoiceNumber, customer, amount, invoiceDate, dueDate
 - Optional: customerEmail
 - Date formats: `YYYY-MM-DD`, `MM/DD/YYYY`, `DD-MMM-YYYY`
 - Handles `$` and `,` in amounts
-- Skips rows with reasons: `missing_required_field`, `unparseable_date`, `negative_amount`, `invalid_amount`
-- LLM fallback for non-standard column headers
-- Inserts `Invoice` rows via upsert (idempotent on `dataSourceId + invoiceNumber`)
+- Skip reasons: `missing_required_field`, `unparseable_date`, `negative_amount`, `invalid_amount`
+- Upserts `Invoice` rows (idempotent on `dataSourceId + invoiceNumber`)
 
 ---
 
-## AR Follow-ups (V1.5)
+## AR Follow-ups
 
-### Invoice State Machine
+### Invoice state machine
 
 ```
-open ──(mark_sent)──> sent ──(14d cooldown passes)──> open  [re-dunning eligible]
+open ──(mark_sent)──> sent ──(14d cooldown passes)──> open
  │                     │
  │                     └──(escalate)──> escalated  [terminal]
  │
@@ -486,9 +618,9 @@ open ──(mark_sent)──> sent ──(14d cooldown passes)──> open  [re-
 
 - `scan_ar_aging` is the single eligibility check — filters out snoozed, cooldown, and non-overdue invoices
 - "Sent" invoices become eligible again after 14 days (no cron — next scan picks them up)
-- One invoice can accumulate multiple Action rows over time (one per dunning cycle), but only one `pending` action exists at a time (enforced by dedupe)
+- One invoice can accumulate multiple Action rows over time, but only one `pending` action exists at a time (enforced by dedupe on `invoiceId`)
 
-### Dunning Email Tones
+### Dunning email tones
 
 | Bucket | Days Overdue | Tone | Subject Line |
 |---|---|---|---|
@@ -496,79 +628,56 @@ open ──(mark_sent)──> sent ──(14d cooldown passes)──> open  [re-
 | Warning | 15-44 | Firm | "Payment Overdue — Invoice INV-XXXX" |
 | Critical | 45+ | Escalation | "URGENT — Invoice INV-XXXX Significantly Overdue" |
 
+Exported helpers `inferToneFromInvoice(dueDate)` and `buildDunningEmailBody(invoice, tone)` are shared between the agent tool (`draft_dunning_email`) and the AR API route so the UI and agent produce byte-identical drafts.
+
 ---
 
 ## Testing
 
 ```bash
-# Run all tests
-npm test
-
-# Watch mode
+npm test          # run once
 npm run test:watch
 ```
 
-### Test Suite (146 tests, 13 files)
+Pure unit tests in `__tests__/lib/`:
 
-Covers:
+- `utils.test.ts` — `relativeTime`, `formatCurrency`, `severityColor`
+- `csv/detect-shape.test.ts` — regex fast-path CSV classification
+- `csv/variance-parser.test.ts` — column detection + row parsing
+- `csv/ar-parser.test.ts` / `ar-parser-dates.test.ts` — AR parser + date format matrix
+- `invoice-state.test.ts` — state transition matrix + action status mapping
+- `agent/ar-tools.test.ts` — tone inference + dunning email body builder
+- `agent/allowed-tools.test.ts` — `buildAllowedTools` union behavior
 
-- `__tests__/lib/utils.test.ts` — `relativeTime`, `formatCurrency`, `severityColor`
-- `__tests__/lib/csv/detect-shape.test.ts` — regex fast-path CSV classification
-- `__tests__/lib/csv/variance-parser.test.ts` — shared variance parser (column detection, row parsing)
-- `__tests__/lib/csv/ar-parser.test.ts` — AR column detection, row parsing, skip reasons
-- `__tests__/lib/csv/ar-parser-dates.test.ts` — date format matrix (3 formats + invalid inputs)
-- `__tests__/lib/invoice-state.test.ts` — state transition matrix + action status mapping
-- `__tests__/lib/agent/ar-tools.test.ts` — tone inference buckets + dunning email builder
-
-All tests are pure unit tests — no database or network calls. Agent tools that hit Prisma are tested via their exported pure helpers (`inferToneFromInvoice`, `buildDunningEmailBody`).
+No database, no network. Agent tools that hit Prisma are tested via their exported pure helpers (`inferToneFromInvoice`, `buildDunningEmailBody`).
 
 ---
 
 ## Sample Data
 
-### Variance Data
 - `public/sample-budget-vs-actual.csv` — budget vs actual with multiple categories
-- `public/sample-q1-budget.csv` — Q1 quarterly budget data
-
-### AR Aging Data
-- `public/sample-ar-aging.csv` — 8 invoices spread across buckets:
-  - 2 friendly (1-14 days overdue)
-  - 3 firm (15-44 days overdue)
-  - 2 escalation (45+ days overdue)
-  - 1 recently dunned (will be skipped by cooldown filter)
+- `public/sample-q1-budget.csv` — Q1 quarterly budget
+- `public/sample-ar-aging.csv` — 8 invoices spread across buckets (2 friendly, 3 firm, 2 escalation, 1 cooldown-skipped)
 
 ---
 
-## Scripts
+## Scripts & Auth
 
 ```bash
-# Seed demo variance data (also available via UI button)
-npm run db:seed
-
-# Seed AR aging demo data
-npx tsx scripts/seed-ar.ts
-
-# Type check
-npx tsc --noEmit
-
-# Lint
-npm run lint
+npm run db:seed              # Seed demo variance data
+npx tsx scripts/seed-ar.ts   # Seed AR aging demo data
+npx tsc --noEmit             # Type check
+npm run lint                 # Lint
 ```
 
----
-
-## Auth
-
-Authentication is cookie-based for simplicity (demo app):
-- Login at `/login` with any email — creates a `User` row if it doesn't exist
-- Session stored as a JSON cookie (`lyzr-session`)
-- Middleware redirects unauthenticated requests to `/login` (except API routes and static assets)
-- No password, no OAuth — this is a demo/internal tool
+**Auth** is cookie-based for demo simplicity: enter any email at `/login`, `proxy.ts` gates everything except `/login` and `/api/*` on the `lyzr-session` cookie. No password, no OAuth — this is an internal / demo tool.
 
 ---
 
 ## Design Docs
 
-Detailed design specifications live in `docs/superpowers/specs/`:
-- `2026-04-10-v1.5-ar-followups-design.md` — Full V1.5 AR follow-ups design spec including architecture decisions, rejected alternatives, and state machine details
-- `2026-04-14-v2-dashboard-polish-design.md` — V2 dashboard polish: stats strip, compact rows + slide-over, tabbed data sources, Google Sheet linking, budget chart, briefing-in-chat
+Detailed design specs live in `docs/superpowers/specs/`:
+
+- `2026-04-15-v3-agenticos-rebuild-design.md` — AgenticOS rebuild: Command Center, Agent Console, journey shells, Build & Observe surfaces
+- `2026-04-14-v2-dashboard-polish-design.md` — V2 dashboard polish (pre-rebuild)
+- `2026-04-10-v1.5-ar-followups-design.md` — V1.5 AR follow-ups state machine and architecture decisions
