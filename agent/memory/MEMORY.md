@@ -1,3 +1,1 @@
-# Agent Memory
-
-No memories yet. Memories will be saved here as the agent learns about users and their financial data.
+*   **Recurring Issue:** Several invoices (Foxworth & Co, Evergreen Solutions) are significantly overdue (over 100 days), indicating potential chronic late payers or a need to review collection strategies for older debts.
