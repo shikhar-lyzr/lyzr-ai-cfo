@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { SectionHeader } from "@/components/shared/section-header";
 import { PriorityBadge } from "@/components/shared/priority-badge";
+import { ARActionCard } from "./ar-action-card";
 import type { Action } from "@/lib/types";
 
 function severityToPriority(severity: string): "critical" | "high" | "medium" | "low" {
@@ -85,11 +86,40 @@ export function ActionsRequired() {
   }, []);
 
   const handleAction = async (id: string, status: string) => {
-    await fetch(`/api/actions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
+    const action = actions.find((a) => a.id === id);
+    if (!action) return;
+
+    // AR operations
+    if (action.type === "ar_followup") {
+      let op: "mark_sent" | "snooze" | "escalate" | "dismiss" = "dismiss";
+      if (status === "mark_sent") op = "mark_sent";
+      else if (status === "snooze") op = "snooze";
+      else if (status === "escalate") op = "escalate";
+      else if (status === "dismiss") op = "dismiss";
+
+      if (op !== "dismiss") {
+        await fetch(`/api/actions/${id}/ar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op, days: 7 }),
+        });
+      } else {
+        // Mark as dismissed
+        await fetch(`/api/actions/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "dismissed" }),
+        });
+      }
+    } else {
+      // Regular action
+      await fetch(`/api/actions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    }
+
     setActions((prev) => prev.filter((a) => a.id !== id));
   };
 
@@ -103,12 +133,23 @@ export function ActionsRequired() {
           </div>
         ) : (
           <>
-            {actions.map((action) => (
-              <ActionCard key={action.id} action={action} onAction={handleAction} />
-            ))}
+            {actions.map((action) => {
+              if (action.type === "ar_followup") {
+                return (
+                  <ARActionCard
+                    key={action.id}
+                    action={action}
+                    onAction={(id, op) => handleAction(id, op)}
+                  />
+                );
+              }
+              return (
+                <ActionCard key={action.id} action={action} onAction={handleAction} />
+              );
+            })}
             {actions.length >= 5 && (
               <button
-                onClick={() => router.push("/decision-inbox")}
+                onClick={() => router.push("/actions")}
                 className="w-full py-2.5 text-xs font-medium text-primary hover:underline"
               >
                 View all actions

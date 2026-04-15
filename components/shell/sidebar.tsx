@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { LogOut } from "lucide-react";
 import { NavItem } from "./nav-item";
 import { AgentStatusBar } from "./agent-status-bar";
-import { NAV_HOME, JOURNEYS, BUILD_NAV, OBSERVE_NAV } from "@/lib/config/journeys";
+import { NAV_HOME, JOURNEYS, BUILD_NAV, OBSERVE_NAV, UTILITY_NAV } from "@/lib/config/journeys";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -77,6 +77,13 @@ export function Sidebar() {
         <SectionLabel>Observe</SectionLabel>
         <div className="flex flex-col gap-0.5">
           {OBSERVE_NAV.map((item) => (
+            <NavItem key={item.id} item={item} />
+          ))}
+        </div>
+
+        <SectionLabel>Utility</SectionLabel>
+        <div className="flex flex-col gap-0.5">
+          {UTILITY_NAV.map((item) => (
             <NavItem key={item.id} item={item} />
           ))}
         </div>

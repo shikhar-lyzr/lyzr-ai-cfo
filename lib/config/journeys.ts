@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Home, Calendar, RefreshCw, Landmark, BarChart3, Droplets, FileText,
   Bot, Wrench, BookOpen, Plug, GitBranch, Inbox, Search, Shield,
-  ClipboardList, Database, Settings,
+  ClipboardList, Database, Settings, Check,
 } from "lucide-react";
 
 export interface NavItem {
@@ -81,6 +81,7 @@ export const OBSERVE_NAV: NavItem[] = [
 ];
 
 export const UTILITY_NAV: NavItem[] = [
+  { id: "actions", label: "Actions", icon: Check, path: "/actions" },
   { id: "data-sources", label: "Data Sources", icon: Database, path: "/data-sources" },
   { id: "documents", label: "Documents", icon: FileText, path: "/documents" },
   { id: "settings", label: "Settings", icon: Settings, path: "/settings" },
