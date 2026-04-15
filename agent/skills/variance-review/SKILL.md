@@ -1,6 +1,12 @@
 ---
 name: variance-review
 description: Conduct a structured variance analysis comparing actual vs budget figures, flag anomalies, and recommend actions
+confidence: 0.95
+usage_count: 1
+success_count: 0
+failure_count: 1
+negative_examples:
+  - No matching records found for the specified account in the given data source.
 ---
 
 # Variance Review

@@ -93,7 +93,24 @@
       "Bash(ls README*:*)",
       "Bash(grep -rn \"discoverSkills\\\\|formatSkillsForPrompt\\\\|SKILL\" node_modules/gitclaw/dist/*.js)",
       "Bash(npx jest:*)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(mkdir -p docs/superpowers/plans docs/superpowers/specs)",
+      "Bash(cp \"../../docs/superpowers/plans/2026-04-15-v3-agenticos-rebuild.md\" docs/superpowers/plans/)",
+      "Bash(cp \"../../docs/superpowers/specs/2026-04-15-v3-agenticos-rebuild-design.md\" docs/superpowers/specs/)",
+      "Bash(cp \"../../public/AGENT_STREAMING.md\" \"../../public/BUILD_JOURNEYS \\(1\\).md\" \"../../public/COMMAND_CENTER.md\" \"../../public/DESIGN_SYSTEM.md\" \"../../public/LLM_WIKI_IMPLEMENTATION.md\" \"../../public/OBSERVE_JOURNEYS.md\" public/)",
+      "Bash(ls docs/superpowers/plans docs/superpowers/specs public/*.md)",
+      "Bash(ls -la .env*)",
+      "Bash(ls -la C:/Users/shikh/lyzr-ai-cfo/.env*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(cp -r 'app/\\(dashboard\\)/data-sources' 'app/\\(shell\\)/data-sources')",
+      "Bash(cp -r 'app/\\(dashboard\\)/documents' 'app/\\(shell\\)/documents')",
+      "Bash(cp -r 'app/\\(dashboard\\)/settings' 'app/\\(shell\\)/settings')",
+      "Bash(grep \"export.*type.*GCMessage\\\\|export.*interface.*GCMessage\" /c/Users/shikh/lyzr-ai-cfo/.worktrees/v3-agenticos-rebuild/node_modules/gitclaw/dist/*.d.ts)",
+      "Bash(echo \"--EXIT: $?\")",
+      "Bash(git -C /c/Users/shikh/lyzr-ai-cfo status -sb)",
+      "Bash(git -C /c/Users/shikh/lyzr-ai-cfo branch --show-current)",
+      "Bash(git -C /c/Users/shikh/lyzr-ai-cfo diff --stat)",
+      "Bash(git -C /c/Users/shikh/lyzr-ai-cfo diff app/layout.tsx agent/skills/variance-review/SKILL.md .claude/settings.local.json)"
     ]
   }
 }
