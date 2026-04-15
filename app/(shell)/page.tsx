@@ -1,3 +1,5 @@
+"use client";
+
 import { Sparkles } from "lucide-react";
 import { SearchBar } from "@/components/command-center/search-bar";
 import { JourneyCard } from "@/components/command-center/journey-card";
