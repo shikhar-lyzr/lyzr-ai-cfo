@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/db";
 import { runMatchRun } from "./match-engine";
 import { ageDays, ageBucket, severity } from "./ageing";
+import { parseGlCsv } from "@/lib/csv/gl-parser";
+import { parseSubLedgerCsv } from "@/lib/csv/sub-ledger-parser";
+import { parseFxRatesCsv } from "@/lib/csv/fx-rates-parser";
 import type {
   GLEntryInput,
   SubLedgerEntryInput,
   StrategyConfig,
+  FXRateInput,
 } from "./types";
 
 export async function loadLedgerEntries(userId: string): Promise<{
@@ -174,4 +178,92 @@ export async function reAgeOpenBreaks(userId: string): Promise<number> {
     updated++;
   }
   return updated;
+}
+
+export async function loadFxRates(): Promise<FXRateInput[]> {
+  const rows = await prisma.fXRate.findMany();
+  return rows.map((r) => ({
+    fromCurrency: r.fromCurrency,
+    toCurrency: r.toCurrency,
+    rate: r.rate,
+    asOf: r.asOf,
+  }));
+}
+
+export async function ingestFxRates(csvHeaders: string[], csvRows: string[][]) {
+  const rates = parseFxRatesCsv(csvHeaders, csvRows);
+  for (const r of rates) {
+    await prisma.fXRate.upsert({
+      where: {
+        fromCurrency_toCurrency_asOf: {
+          fromCurrency: r.fromCurrency,
+          toCurrency: r.toCurrency,
+          asOf: r.asOf,
+        },
+      },
+      create: r,
+      update: { rate: r.rate },
+    });
+  }
+  return rates.length;
+}
+
+export async function ingestGl(
+  userId: string,
+  fileName: string,
+  headers: string[],
+  rows: string[][]
+) {
+  const rates = await loadFxRates();
+  const { entries, skipped } = await parseGlCsv(headers, rows, rates);
+  const ds = await prisma.dataSource.create({
+    data: {
+      userId, type: "gl", name: fileName, status: "processing",
+      metadata: JSON.stringify({ headers }),
+    },
+  });
+  if (entries.length > 0) {
+    await prisma.gLEntry.createMany({
+      data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
+    });
+  }
+  await prisma.dataSource.update({
+    where: { id: ds.id },
+    data: { status: "ready", recordCount: entries.length },
+  });
+  return { dataSource: ds, skipped };
+}
+
+export async function ingestSubLedger(
+  userId: string,
+  fileName: string,
+  headers: string[],
+  rows: string[][]
+) {
+  const rates = await loadFxRates();
+  const { entries, skipped } = await parseSubLedgerCsv(headers, rows, rates);
+  const ds = await prisma.dataSource.create({
+    data: {
+      userId, type: "sub_ledger", name: fileName, status: "processing",
+      metadata: JSON.stringify({ headers }),
+    },
+  });
+  if (entries.length > 0) {
+    await prisma.subLedgerEntry.createMany({
+      data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
+    });
+  }
+  await prisma.dataSource.update({
+    where: { id: ds.id },
+    data: { status: "ready", recordCount: entries.length },
+  });
+  return { dataSource: ds, skipped };
+}
+
+export async function userHasBothLedgers(userId: string): Promise<boolean> {
+  const [gl, sub] = await Promise.all([
+    prisma.dataSource.count({ where: { userId, type: "gl", status: "ready" } }),
+    prisma.dataSource.count({ where: { userId, type: "sub_ledger", status: "ready" } }),
+  ]);
+  return gl > 0 && sub > 0;
 }

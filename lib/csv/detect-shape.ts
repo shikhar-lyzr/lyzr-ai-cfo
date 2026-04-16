@@ -7,7 +7,7 @@
 
 import { inferCsvShape } from "./llm-mapper";
 
-export type CsvShape = "variance" | "ar" | "gl" | "sub_ledger" | "unknown";
+export type CsvShape = "variance" | "ar" | "gl" | "sub_ledger" | "fx" | "unknown";
 
 /**
  * Classify a CSV by its headers.
