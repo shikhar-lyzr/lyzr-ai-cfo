@@ -84,6 +84,11 @@ if (process.env.LYZR_API_KEY && !process.env.OPENAI_API_KEY) {
 // Note: the actual agent _id (69d43cce...) differs from the Studio URL slug.
 const MODEL = "lyzr:69d43ccef008dd037bad64d7@https://agent-prod.studio.lyzr.ai/v4";
 
+function buildTools(userId: string) {
+  const reconciliationTools = createReconciliationTools(userId);
+  return [...createFinancialTools(userId), ...Object.values(reconciliationTools)];
+}
+
 function ensureApiKey(): void {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI API Key (or LYZR_API_KEY proxy) is not set");
@@ -222,7 +227,7 @@ export async function chatWithAgent(
   ensureApiKey();
 
   const context = await buildContext(userId, actionId);
-  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
+  const tools = buildTools(userId);
 
   let result: Query;
   try {
@@ -289,7 +294,7 @@ export async function analyzeUpload(
   ensureApiKey();
 
   const context = await buildContext(userId);
-  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
+  const tools = buildTools(userId);
 
   const prompt = `A new CSV file "${fileName}" was just uploaded with ${recordCount} financial records (data source ID: ${dataSourceId}).
 
@@ -360,7 +365,7 @@ export async function analyzeArUpload(
   ensureApiKey();
 
   const context = await buildContext(userId);
-  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
+  const tools = buildTools(userId);
 
   const prompt = `A new AR aging CSV "${fileName}" was just uploaded with ${invoiceCount} invoices (data source ID: ${dataSourceId}).
 
@@ -424,7 +429,7 @@ export async function generateReport(
   ensureApiKey();
 
   const context = await buildContext(userId);
-  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
+  const tools = buildTools(userId);
 
   const prompt = type === "variance_report"
     ? `Generate a comprehensive Monthly Variance Report. Steps:
