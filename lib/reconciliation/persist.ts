@@ -192,19 +192,23 @@ export async function loadFxRates(): Promise<FXRateInput[]> {
 
 export async function ingestFxRates(csvHeaders: string[], csvRows: string[][]) {
   const rates = parseFxRatesCsv(csvHeaders, csvRows);
-  for (const r of rates) {
-    await prisma.fXRate.upsert({
-      where: {
-        fromCurrency_toCurrency_asOf: {
-          fromCurrency: r.fromCurrency,
-          toCurrency: r.toCurrency,
-          asOf: r.asOf,
-        },
-      },
-      create: r,
-      update: { rate: r.rate },
-    });
-  }
+  await prisma.$transaction(async (tx) => {
+    await Promise.all(
+      rates.map((r) =>
+        tx.fXRate.upsert({
+          where: {
+            fromCurrency_toCurrency_asOf: {
+              fromCurrency: r.fromCurrency,
+              toCurrency: r.toCurrency,
+              asOf: r.asOf,
+            },
+          },
+          create: r,
+          update: { rate: r.rate },
+        })
+      )
+    );
+  }, { timeout: 30_000 });
   return rates.length;
 }
 
@@ -216,22 +220,28 @@ export async function ingestGl(
 ) {
   const rates = await loadFxRates();
   const { entries, skipped } = await parseGlCsv(headers, rows, rates);
-  const ds = await prisma.dataSource.create({
-    data: {
-      userId, type: "gl", name: fileName, status: "processing",
-      metadata: JSON.stringify({ headers }),
+  const { dataSource } = await prisma.$transaction(
+    async (tx) => {
+      const ds = await tx.dataSource.create({
+        data: {
+          userId, type: "gl", name: fileName, status: "processing",
+          metadata: JSON.stringify({ headers }),
+        },
+      });
+      if (entries.length > 0) {
+        await tx.gLEntry.createMany({
+          data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
+        });
+      }
+      await tx.dataSource.update({
+        where: { id: ds.id },
+        data: { status: "ready", recordCount: entries.length },
+      });
+      return { dataSource: ds, skipped };
     },
-  });
-  if (entries.length > 0) {
-    await prisma.gLEntry.createMany({
-      data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
-    });
-  }
-  await prisma.dataSource.update({
-    where: { id: ds.id },
-    data: { status: "ready", recordCount: entries.length },
-  });
-  return { dataSource: ds, skipped };
+    { timeout: 30_000 }
+  );
+  return { dataSource, skipped };
 }
 
 export async function ingestSubLedger(
@@ -242,22 +252,28 @@ export async function ingestSubLedger(
 ) {
   const rates = await loadFxRates();
   const { entries, skipped } = await parseSubLedgerCsv(headers, rows, rates);
-  const ds = await prisma.dataSource.create({
-    data: {
-      userId, type: "sub_ledger", name: fileName, status: "processing",
-      metadata: JSON.stringify({ headers }),
+  const { dataSource } = await prisma.$transaction(
+    async (tx) => {
+      const ds = await tx.dataSource.create({
+        data: {
+          userId, type: "sub_ledger", name: fileName, status: "processing",
+          metadata: JSON.stringify({ headers }),
+        },
+      });
+      if (entries.length > 0) {
+        await tx.subLedgerEntry.createMany({
+          data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
+        });
+      }
+      await tx.dataSource.update({
+        where: { id: ds.id },
+        data: { status: "ready", recordCount: entries.length },
+      });
+      return { dataSource: ds, skipped };
     },
-  });
-  if (entries.length > 0) {
-    await prisma.subLedgerEntry.createMany({
-      data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
-    });
-  }
-  await prisma.dataSource.update({
-    where: { id: ds.id },
-    data: { status: "ready", recordCount: entries.length },
-  });
-  return { dataSource: ds, skipped };
+    { timeout: 30_000 }
+  );
+  return { dataSource, skipped };
 }
 
 export async function userHasBothLedgers(userId: string): Promise<boolean> {

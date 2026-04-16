@@ -50,12 +50,16 @@ export async function POST(request: NextRequest) {
   }
   if (shape === "gl") {
     const { dataSource, skipped } = await ingestGl(userId, file.name, headers, rows);
-    await maybeAutoMatch(userId);
+    maybeAutoMatch(userId)
+      .then((runId) => console.log("[upload] auto-match completed:", runId ?? "skipped"))
+      .catch((err) => console.error("[upload] auto-match failed:", err));
     return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length });
   }
   if (shape === "sub_ledger") {
     const { dataSource, skipped } = await ingestSubLedger(userId, file.name, headers, rows);
-    await maybeAutoMatch(userId);
+    maybeAutoMatch(userId)
+      .then((runId) => console.log("[upload] auto-match completed:", runId ?? "skipped"))
+      .catch((err) => console.error("[upload] auto-match failed:", err));
     return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length });
   }
 
@@ -253,9 +257,9 @@ async function handleVarianceUpload(
   });
 }
 
-async function maybeAutoMatch(userId: string) {
+async function maybeAutoMatch(userId: string): Promise<string | undefined> {
   const both = await userHasBothLedgers(userId);
-  if (!both) return;
+  if (!both) return undefined;
   const { gl, sub } = await loadLedgerEntries(userId);
-  await saveMatchRun(userId, gl, sub, DEFAULT_STRATEGY_CONFIG, "upload");
+  return saveMatchRun(userId, gl, sub, DEFAULT_STRATEGY_CONFIG, "upload");
 }
