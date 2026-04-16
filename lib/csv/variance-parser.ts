@@ -7,9 +7,28 @@ export interface ParsedVarianceRow {
 }
 
 export function parseCSV(text: string): { headers: string[]; rows: string[][] } {
-  const lines = text.trim().split("\n");
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  const rows = lines.slice(1).map((line) => line.split(",").map((cell) => cell.trim()));
+  const lines = text.trim().split(/\r?\n/);
+  const parseLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; } // escaped quote
+        else inQuotes = !inQuotes;
+      } else if (ch === "," && !inQuotes) {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+  const headers = parseLine(lines[0]).map((h) => h.toLowerCase());
+  const rows = lines.slice(1).filter((l) => l.trim()).map(parseLine);
   return { headers, rows };
 }
 
