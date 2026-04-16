@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { prisma } from "@/lib/db";
 import { createFinancialTools } from "./tools";
+import { createReconciliationTools } from "./tools/reconciliation";
 import { buildAllowedTools } from "./allowed-tools";
 
 function resolveAgentDir(): string {
@@ -221,7 +222,7 @@ export async function chatWithAgent(
   ensureApiKey();
 
   const context = await buildContext(userId, actionId);
-  const tools = createFinancialTools(userId);
+  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
 
   let result: Query;
   try {
@@ -288,7 +289,7 @@ export async function analyzeUpload(
   ensureApiKey();
 
   const context = await buildContext(userId);
-  const tools = createFinancialTools(userId);
+  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
 
   const prompt = `A new CSV file "${fileName}" was just uploaded with ${recordCount} financial records (data source ID: ${dataSourceId}).
 
@@ -359,7 +360,7 @@ export async function analyzeArUpload(
   ensureApiKey();
 
   const context = await buildContext(userId);
-  const tools = createFinancialTools(userId);
+  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
 
   const prompt = `A new AR aging CSV "${fileName}" was just uploaded with ${invoiceCount} invoices (data source ID: ${dataSourceId}).
 
@@ -423,7 +424,7 @@ export async function generateReport(
   ensureApiKey();
 
   const context = await buildContext(userId);
-  const tools = createFinancialTools(userId);
+  const tools = [...createFinancialTools(userId), ...createReconciliationTools(userId)];
 
   const prompt = type === "variance_report"
     ? `Generate a comprehensive Monthly Variance Report. Steps:
