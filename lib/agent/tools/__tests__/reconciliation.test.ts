@@ -18,7 +18,7 @@ describe("reconciliation write tools", { timeout: 30_000 }, () => {
   it("run_matching returns friendly message on empty DB", async () => {
     const t = createReconciliationTools(userId);
     const res = await t.runMatching.handler({}) as { text: string; details?: any };
-    expect(res.text).toMatch(/no ledger/i);
+    expect(res.text).toMatch(/cannot run matching/i);
   });
 
   async function seedBreak() {
@@ -74,5 +74,64 @@ describe("reconciliation write tools", { timeout: 30_000 }, () => {
     expect(refreshedBreak?.status).toBe("adjusted");
     const journals = await prisma.journalAdjustment.count({ where: { proposalId } });
     expect(journals).toBe(1);
+  });
+
+  it("approve_adjustment rejects cross-tenant proposal", async () => {
+    const brk = await seedBreak();
+    const t = createReconciliationTools(userId);
+    const prop = await t.proposeAdjustment.handler({
+      breakId: brk.id, debitAccount: "9900", creditAccount: "2100", amount: 50, description: "test",
+    }) as { text: string; details?: any };
+    const proposalId = (prop.details as { proposalId: string }).proposalId;
+
+    const otherUser = await prisma.user.create({
+      data: {
+        lyzrAccountId: `t_${Date.now()}_${Math.random()}_x`,
+        email: `t_${Date.now()}_${Math.random()}_x@test.local`,
+        name: "Other",
+      },
+    });
+    const otherTools = createReconciliationTools(otherUser.id);
+    const res = await otherTools.approveAdjustment.handler({ proposalId, confirm: true }) as { text: string; details?: any };
+    expect(res.text).toMatch(/not found/i);
+
+    const journals = await prisma.journalAdjustment.count({ where: { proposalId } });
+    expect(journals).toBe(0);
+  });
+
+  it("approve_adjustment is idempotent on double-post", async () => {
+    const brk = await seedBreak();
+    const t = createReconciliationTools(userId);
+    const prop = await t.proposeAdjustment.handler({
+      breakId: brk.id, debitAccount: "9900", creditAccount: "2100", amount: 50, description: "test",
+    }) as { text: string; details?: any };
+    const proposalId = (prop.details as { proposalId: string }).proposalId;
+
+    const first = await t.approveAdjustment.handler({ proposalId, confirm: true }) as { text: string; details?: any };
+    expect(first.text).toMatch(/posted journal/i);
+
+    const second = await t.approveAdjustment.handler({ proposalId, confirm: true }) as { text: string; details?: any };
+    // Second call sees status != pending and short-circuits.
+    expect(second.text).toMatch(/already/i);
+
+    const journals = await prisma.journalAdjustment.count({ where: { proposalId } });
+    expect(journals).toBe(1);
+  });
+
+  it("propose_adjustment rejects a second pending proposal on the same break", async () => {
+    const brk = await seedBreak();
+    const t = createReconciliationTools(userId);
+    const first = await t.proposeAdjustment.handler({
+      breakId: brk.id, debitAccount: "9900", creditAccount: "2100", amount: 50, description: "first",
+    }) as { text: string; details?: any };
+    expect((first.details as { proposalId?: string }).proposalId).toBeTruthy();
+
+    const second = await t.proposeAdjustment.handler({
+      breakId: brk.id, debitAccount: "9900", creditAccount: "2100", amount: 50, description: "second",
+    }) as { text: string; details?: any };
+    expect(second.text).toMatch(/already exists/i);
+
+    const proposals = await prisma.adjustmentProposal.count({ where: { breakId: brk.id } });
+    expect(proposals).toBe(1);
   });
 });

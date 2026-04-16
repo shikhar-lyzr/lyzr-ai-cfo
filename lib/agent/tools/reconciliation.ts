@@ -220,8 +220,14 @@ export function createReconciliationTools(userId: string) {
     },
     async (args) => {
       const { gl, sub } = await loadLedgerEntries(userId);
-      if (gl.length === 0 && sub.length === 0) {
-        return { text: "No ledger data loaded yet — upload GL and sub-ledger CSVs first.", details: {} };
+      if (gl.length === 0 || sub.length === 0) {
+        const missing = gl.length === 0 && sub.length === 0
+          ? "GL and sub-ledger"
+          : gl.length === 0 ? "GL" : "sub-ledger";
+        return {
+          text: `Cannot run matching — ${missing} data is missing. Upload the missing CSV(s) first.`,
+          details: { glCount: gl.length, subCount: sub.length },
+        };
       }
       const config = { ...DEFAULT_STRATEGY_CONFIG, ...(args.strategyConfig ?? {}) };
       const runId = await saveMatchRun(userId, gl, sub, config, "agent");
@@ -288,6 +294,17 @@ export function createReconciliationTools(userId: string) {
         where: { id: args.breakId, matchRun: { userId } },
       });
       if (!b) return { text: `Break ${args.breakId} not found.`, details: {} };
+
+      const existing = await prisma.adjustmentProposal.findFirst({
+        where: { breakId: b.id, status: "pending" },
+      });
+      if (existing) {
+        return {
+          text: `A pending proposal already exists for break ${b.id} (proposal ${existing.id}). Approve or reject it first.`,
+          details: { existingProposalId: existing.id },
+        };
+      }
+
       const prop = await prisma.adjustmentProposal.create({
         data: {
           breakId: b.id,
@@ -318,7 +335,9 @@ export function createReconciliationTools(userId: string) {
       required: ["proposalId"],
     },
     async (args) => {
-      const p = await prisma.adjustmentProposal.findUnique({ where: { id: args.proposalId } });
+      const p = await prisma.adjustmentProposal.findFirst({
+        where: { id: args.proposalId, break: { matchRun: { userId } } },
+      });
       if (!p) return { text: `Proposal ${args.proposalId} not found.`, details: {} };
       if (p.status !== "pending") return { text: `Proposal already ${p.status}.`, details: { status: p.status } };
 
@@ -331,35 +350,51 @@ export function createReconciliationTools(userId: string) {
         };
       }
 
-      const result = await prisma.$transaction(async (tx) => {
-        const journal = await tx.journalAdjustment.create({
-          data: {
-            userId,
-            proposalId: p.id,
-            entryDate: new Date(),
-            lines: [
-              { account: p.debitAccount, dr: p.amount, cr: 0, baseAmount: p.baseAmount },
-              { account: p.creditAccount, dr: 0, cr: p.amount, baseAmount: p.baseAmount },
-            ],
-          },
-        });
-        await tx.adjustmentProposal.update({
-          where: { id: p.id },
-          data: {
-            status: "posted",
-            approvedBy: userId,
-            approvedAt: new Date(),
-            postedJournalId: journal.id,
-          },
-        });
-        await tx.break.update({
-          where: { id: p.breakId },
-          data: { status: "adjusted" },
-        });
-        return journal.id;
-      }, { timeout: 30_000 });
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          // Conditional guard: only proceed if still pending. If a concurrent call
+          // already flipped it, updateMany returns count=0 and we bail.
+          const claimed = await tx.adjustmentProposal.updateMany({
+            where: { id: p.id, status: "pending" },
+            data: {
+              status: "posted",
+              approvedBy: userId,
+              approvedAt: new Date(),
+            },
+          });
+          if (claimed.count === 0) {
+            throw new Error("ALREADY_POSTED");
+          }
 
-      return { text: `Posted journal ${result}. Break flipped to adjusted.`, details: { journalId: result } };
+          const journal = await tx.journalAdjustment.create({
+            data: {
+              userId,
+              proposalId: p.id,
+              entryDate: new Date(),
+              lines: [
+                { account: p.debitAccount, dr: p.amount, cr: 0, baseAmount: p.baseAmount },
+                { account: p.creditAccount, dr: 0, cr: p.amount, baseAmount: p.baseAmount },
+              ],
+            },
+          });
+          await tx.adjustmentProposal.update({
+            where: { id: p.id },
+            data: { postedJournalId: journal.id },
+          });
+          await tx.break.update({
+            where: { id: p.breakId },
+            data: { status: "adjusted" },
+          });
+          return journal.id;
+        }, { timeout: 30_000 });
+
+        return { text: `Posted journal ${result}. Break flipped to adjusted.`, details: { journalId: result } };
+      } catch (err) {
+        if (err instanceof Error && err.message === "ALREADY_POSTED") {
+          return { text: `Proposal was posted by a concurrent request. No duplicate journal created.`, details: {} };
+        }
+        throw err;
+      }
     }
   );
 
