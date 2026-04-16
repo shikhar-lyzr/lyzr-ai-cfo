@@ -24,9 +24,9 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
-  const formatted = actions.map((a) => ({
+  const formatted = actions.map((a: any) => ({
     ...a,
-    sourceName: a.dataSource.name,
+    sourceName: a.dataSource?.name,
     dataSource: undefined,
   }));
 
