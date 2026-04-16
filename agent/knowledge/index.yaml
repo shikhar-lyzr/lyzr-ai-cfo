@@ -13,3 +13,8 @@ entries:
     always_load: false
     tags: [reports, commentary, formatting]
     priority: medium
+
+  - path: reconciliation-thresholds.md
+    always_load: false
+    tags: [reconciliation, thresholds, severity, matching]
+    priority: high
