@@ -153,7 +153,10 @@ export async function saveMatchRun(
   }, { timeout: 30_000 });
 
   const { escalateQualifyingBreaks } = await import("./escalation");
-  await escalateQualifyingBreaks(userId, runId);
+  const escalated = await escalateQualifyingBreaks(userId, runId);
+  if (escalated > 0) {
+    console.log(`[reconciliation] escalated ${escalated} break(s) to Actions for run ${runId}`);
+  }
 
   return runId;
 }
