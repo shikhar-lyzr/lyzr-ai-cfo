@@ -83,5 +83,12 @@ describe("persist layer", { timeout: 30_000 }, () => {
     expect(breakRow?.side).toBe("gl_only");
     expect(breakRow?.severity).toBe("high"); // >60d OR >10k
     expect(breakRow?.ageBucket).toBe("60+");
+
+    const br = await prisma.break.findFirst({ where: { matchRunId: runId } });
+    expect(br?.actionId).not.toBeNull();
+
+    const act = await prisma.action.findUnique({ where: { id: br!.actionId! } });
+    expect(act?.type).toBe("reconciliation_break");
+    expect(act?.severity).toBe("high");
   });
 });

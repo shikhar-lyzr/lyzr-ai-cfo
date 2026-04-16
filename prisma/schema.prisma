@@ -65,13 +65,13 @@ model Action {
   detail             String
   driver             String
   status             String   @default("pending")
-  sourceDataSourceId String
+  sourceDataSourceId String?
   invoiceId          String?
   draftBody          String?
   createdAt          DateTime @default(now())
 
   user         User         @relation(fields: [userId], references: [id])
-  dataSource   DataSource   @relation(fields: [sourceDataSourceId], references: [id])
+  dataSource   DataSource?  @relation(fields: [sourceDataSourceId], references: [id])
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   chatMessages ChatMessage[]
   events       ActionEvent[]

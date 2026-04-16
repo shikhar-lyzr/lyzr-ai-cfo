@@ -62,7 +62,7 @@ export async function saveMatchRun(
 
   // Wrap the write chain in a transaction so a mid-chain failure cannot leave
   // a MatchRun row whose link/break/status side-effects are partially realized.
-  return prisma.$transaction(async (tx) => {
+  const runId = await prisma.$transaction(async (tx) => {
     const run = await tx.matchRun.create({
       data: {
         userId,
@@ -151,6 +151,11 @@ export async function saveMatchRun(
 
     return run.id;
   }, { timeout: 30_000 });
+
+  const { escalateQualifyingBreaks } = await import("./escalation");
+  await escalateQualifyingBreaks(userId, runId);
+
+  return runId;
 }
 
 export async function reAgeOpenBreaks(userId: string): Promise<number> {
