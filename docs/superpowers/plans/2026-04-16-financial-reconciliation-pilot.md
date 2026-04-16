@@ -540,7 +540,7 @@ export function severity(days: number, baseAmount: number): Severity {
 - [ ] **Step 4: Run tests to confirm they pass**
 
 Run: `npx vitest run lib/reconciliation/__tests__/ageing.test.ts`
-Expected: 6 passed.
+Expected: 5 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1118,35 +1118,43 @@ import { runMatchRun } from "../match-engine";
 import { DEFAULT_STRATEGY_CONFIG } from "../types";
 import type { GLEntryInput, SubLedgerEntryInput } from "../types";
 
-function gl(id: string, ref: string, amount: number, date: string, memo = ""): GLEntryInput {
+function gl(
+  id: string, ref: string, amount: number, date: string,
+  memo = "", counterparty: string | undefined = "Acme"
+): GLEntryInput {
   return {
     id, reference: ref,
     entryDate: new Date(date), postingDate: new Date(date),
     account: "2100", memo, amount, txnCurrency: "USD", baseAmount: amount,
-    debitCredit: "DR", counterparty: "Acme",
+    debitCredit: "DR", counterparty,
   };
 }
-function sub(id: string, ref: string, amount: number, date: string, memo = ""): SubLedgerEntryInput {
+function sub(
+  id: string, ref: string, amount: number, date: string,
+  memo = "", counterparty: string | undefined = "Acme"
+): SubLedgerEntryInput {
   return {
     id, reference: ref, sourceModule: "AP",
     entryDate: new Date(date), account: "2100", memo,
-    amount, txnCurrency: "USD", baseAmount: amount, counterparty: "Acme",
+    amount, txnCurrency: "USD", baseAmount: amount, counterparty,
   };
 }
 
 describe("runMatchRun", () => {
   it("matches exact first, then tolerance, then fuzzy; no double-matching", () => {
+    // g3/s3 share amount+date but have different counterparties so tolerance
+    // skips (gate) and fuzzy wins on memo similarity.
     const gls = [
-      gl("g1", "INV-001", 100, "2026-04-01"),               // exact
-      gl("g2", "INV-002", 200.5, "2026-04-01"),             // tolerance (amount)
-      gl("g3", "INV-003", 300, "2026-04-01", "Acme pmt"),   // fuzzy
-      gl("g4", "INV-004", 400, "2026-04-01"),               // gl-only
+      gl("g1", "INV-001", 100, "2026-04-01"),                            // exact
+      gl("g2", "INV-002", 200.5, "2026-04-01"),                          // tolerance (amount)
+      gl("g3", "INV-003", 300, "2026-04-01", "Acme pmt", "AcmeCo"),      // fuzzy
+      gl("g4", "INV-004", 400, "2026-04-01"),                            // gl-only
     ];
     const subs = [
       sub("s1", "INV-001", 100, "2026-04-01"),
       sub("s2", "INV-OTHER", 200, "2026-04-02"),
-      sub("s3", "INV-OTHER2", 300, "2026-04-01", "Acme payment"),
-      sub("s5", "INV-999", 999, "2026-04-01"),              // sub-only
+      sub("s3", "INV-OTHER2", 300, "2026-04-01", "Acme payment", "Acme, Inc."),
+      sub("s5", "INV-999", 999, "2026-04-01"),                           // sub-only
     ];
     const res = runMatchRun(gls, subs, DEFAULT_STRATEGY_CONFIG);
 
