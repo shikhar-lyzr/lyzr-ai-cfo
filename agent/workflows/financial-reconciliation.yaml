@@ -1,0 +1,13 @@
+name: financial-reconciliation
+description: Match GL vs sub-ledger, classify breaks by cause, propose adjustments and escalate stale items
+steps:
+  - skill: financial-reconciliation
+    prompt: "Call reconciliation_summary and report the match rate, break count, oldest unmatched item, and top breaks by dollar value"
+  - skill: financial-reconciliation
+    prompt: "For each high-severity break in the top 5, search the opposite ledger by reference and counterparty to find its likely counterpart"
+  - skill: financial-reconciliation
+    prompt: "Classify every open break as timing / amount-mismatch / FX-variance / stale and recommend a disposition per class"
+  - skill: financial-reconciliation
+    prompt: "Propose adjustments for amount mismatches (preview only), escalate stale breaks over 60 days, and offer re-matching with tighter tolerances if match rate is below 85%"
+  - skill: financial-reconciliation
+    prompt: "Summarize what was adjusted, escalated, and what remains open, with owner and next step for each"

@@ -7,7 +7,7 @@
 
 import { inferCsvShape } from "./llm-mapper";
 
-export type CsvShape = "variance" | "ar" | "unknown";
+export type CsvShape = "variance" | "ar" | "gl" | "sub_ledger" | "fx" | "unknown";
 
 /**
  * Classify a CSV by its headers.
@@ -25,6 +25,10 @@ export async function detectCsvShape(headers: string[]): Promise<CsvShape> {
 /** Pure regex classifier — no I/O. */
 export function detectFastPath(headers: string[]): CsvShape {
   const joined = headers.map((h) => h.toLowerCase()).join(" | ");
+
+  // GL and sub-ledger have unique header signals — check first.
+  if (/debit[_\s-]?credit/i.test(joined)) return "gl";
+  if (/source[_\s-]?module/i.test(joined)) return "sub_ledger";
 
   const hasInvoice = /invoice|inv[_\s-]?(no|num|number|id)/i.test(joined);
   const hasDueDate = /due[_\s-]?date|payment[_\s-]?due/i.test(joined);

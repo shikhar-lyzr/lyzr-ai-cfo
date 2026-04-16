@@ -5,6 +5,15 @@ import { inferColumnMapping } from "@/lib/csv/llm-mapper";
 import { detectCsvShape } from "@/lib/csv/detect-shape";
 import { parseArCsv } from "@/lib/csv/ar-parser";
 import { parseCSV, autoDetectColumns, parseRows } from "@/lib/csv/variance-parser";
+import { DEFAULT_STRATEGY_CONFIG } from "@/lib/reconciliation/types";
+import {
+  ingestGl,
+  ingestSubLedger,
+  ingestFxRates,
+  loadLedgerEntries,
+  saveMatchRun,
+  userHasBothLedgers,
+} from "@/lib/reconciliation/persist";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -32,6 +41,26 @@ export async function POST(request: NextRequest) {
       },
       { status: 400 }
     );
+  }
+
+  // ── Reconciliation flows (GL/sub-ledger/FX) ────────────────────
+  if (shape === "fx") {
+    const count = await ingestFxRates(headers, rows);
+    return NextResponse.json({ kind: "fx", ratesLoaded: count });
+  }
+  if (shape === "gl") {
+    const { dataSource, skipped } = await ingestGl(userId, file.name, headers, rows);
+    maybeAutoMatch(userId)
+      .then((runId) => console.log("[upload] auto-match completed:", runId ?? "skipped"))
+      .catch((err) => console.error("[upload] auto-match failed:", err));
+    return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length });
+  }
+  if (shape === "sub_ledger") {
+    const { dataSource, skipped } = await ingestSubLedger(userId, file.name, headers, rows);
+    maybeAutoMatch(userId)
+      .then((runId) => console.log("[upload] auto-match completed:", runId ?? "skipped"))
+      .catch((err) => console.error("[upload] auto-match failed:", err));
+    return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length });
   }
 
   if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {
@@ -226,4 +255,11 @@ async function handleVarianceUpload(
     mapping,
     mappingSource,
   });
+}
+
+async function maybeAutoMatch(userId: string): Promise<string | undefined> {
+  const both = await userHasBothLedgers(userId);
+  if (!both) return undefined;
+  const { gl, sub } = await loadLedgerEntries(userId);
+  return saveMatchRun(userId, gl, sub, DEFAULT_STRATEGY_CONFIG, "upload");
 }
