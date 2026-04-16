@@ -6,11 +6,13 @@ import { DonutChart } from "@/components/shared/donut-chart";
 import { getSession } from "@/lib/auth";
 import { getReconciliationStats, getTopBreaks } from "@/lib/reconciliation/stats";
 
+type TopBreak = Awaited<ReturnType<typeof getTopBreaks>>[number];
+
 export default async function FinancialReconciliationPage() {
   const session = await getSession();
   const userId = session?.userId ?? null;
   const stats = userId ? await getReconciliationStats(userId) : { hasData: false as const };
-  const topBreaks = userId && stats.hasData ? await getTopBreaks(userId, 10) : [];
+  const topBreaks: TopBreak[] = userId && stats.hasData ? await getTopBreaks(userId, 10) : [];
 
   if (!stats.hasData) {
     return (

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   if (shape === "unknown") {
     return NextResponse.json(
       {
-        error: "Could not classify this CSV as variance or AR data. Detected headers: " + headers.join(", "),
+        error: "Could not classify this CSV. We support: variance/P&L, AR/invoices, GL, sub-ledger, and FX-rates. Detected headers: " + headers.join(", "),
       },
       { status: 400 }
     );

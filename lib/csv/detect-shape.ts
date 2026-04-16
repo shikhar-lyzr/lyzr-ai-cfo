@@ -26,6 +26,9 @@ export async function detectCsvShape(headers: string[]): Promise<CsvShape> {
 export function detectFastPath(headers: string[]): CsvShape {
   const joined = headers.map((h) => h.toLowerCase()).join(" | ");
 
+  // FX-rates: from_currency + to_currency + rate
+  if (/from[_\s-]?currency/i.test(joined) && /to[_\s-]?currency/i.test(joined) && /\brate\b/i.test(joined)) return "fx";
+
   // GL and sub-ledger have unique header signals — check first.
   if (/debit[_\s-]?credit/i.test(joined)) return "gl";
   if (/source[_\s-]?module/i.test(joined)) return "sub_ledger";

@@ -82,4 +82,14 @@ describe("detectFastPath", () => {
     const headers = ["invoice_number", "customer", "debit_credit", "amount"];
     expect(detectFastPath(headers)).toBe("gl");
   });
+
+  it("classifies FX rate headers as 'fx'", () => {
+    const headers = ["from_currency", "to_currency", "rate", "as_of"];
+    expect(detectFastPath(headers)).toBe("fx");
+  });
+
+  it("classifies FX rate variant headers as 'fx'", () => {
+    const headers = ["from currency", "to currency", "rate", "date"];
+    expect(detectFastPath(headers)).toBe("fx");
+  });
 });
