@@ -27,7 +27,7 @@ export default async function FinancialReconciliationPage() {
       >
         <div className="p-10 text-center text-muted-foreground">
           <p className="mb-4">No reconciliation data yet.</p>
-          <Link href="/data-sources" className="underline">
+          <Link href="/data-sources?tab=reconciliation" className="underline">
             Upload GL + sub-ledger CSVs
           </Link>
         </div>

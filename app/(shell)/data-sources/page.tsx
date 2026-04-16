@@ -1,23 +1,28 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { UploadArea } from "@/components/data-sources/upload-area";
 import { LinkSheetArea } from "@/components/data-sources/link-sheet-area";
 import { SourceList } from "@/components/data-sources/source-list";
 import type { DataSource } from "@/lib/types";
 
-type TabShape = "variance" | "ar";
+type TabShape = "variance" | "ar" | "reconciliation";
 
 export default function DataSourcesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [sources, setSources] = useState<DataSource[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabShape>("variance");
+  const [activeTab, setActiveTab] = useState<TabShape>(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "reconciliation" || tab === "ar") return tab;
+    return "variance";
+  });
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -71,6 +76,17 @@ export default function DataSourcesPage() {
 
       if (res.ok) {
         const result = await res.json();
+        // Reconciliation shapes: redirect back to the reconciliation page
+        if (result.kind === "gl" || result.kind === "sub_ledger" || result.kind === "fx") {
+          const kindLabel = result.kind === "fx" ? "FX rates" : result.kind === "gl" ? "GL" : "sub-ledger";
+          const matchNote = result.kind === "fx"
+            ? ` ${result.ratesLoaded} rates loaded.`
+            : ` ${result.dataSource?.recordCount ?? 0} records ingested${result.skipped > 0 ? `, ${result.skipped} skipped` : ""}.`
+          setUploadResult(`${kindLabel} uploaded.${matchNote} Redirecting...`);
+          fetchSources();
+          setTimeout(() => router.push("/financial-reconciliation"), 1500);
+          return;
+        }
         const mappingNote =
           result.mappingSource === "llm"
             ? " (columns mapped by AI — non-standard headers detected)"
@@ -79,11 +95,12 @@ export default function DataSourcesPage() {
           result.analysisStatus === "processing"
             ? " AI is analyzing in the background — actions will appear on the dashboard shortly."
             : ` Generated ${result.actionsGenerated} actions.`;
+        const redirectPath = activeTab === "ar" ? "/ar-followups" : "/";
         setUploadResult(
-          `Processed ${result.dataSource.recordCount} records.${analysisNote}${mappingNote} Redirecting to dashboard...`
+          `Processed ${result.dataSource.recordCount} records.${analysisNote}${mappingNote} Redirecting...`
         );
         fetchSources();
-        setTimeout(() => router.push("/"), 1500);
+        setTimeout(() => router.push(redirectPath), 1500);
       } else {
         const err = await res.json();
         setUploadResult(`Error: ${err.error}`);
@@ -139,7 +156,7 @@ export default function DataSourcesPage() {
 
         {/* Tabs */}
         <div className="flex border-b border-border">
-          {(["variance", "ar"] as const).map((tab) => (
+          {(["variance", "ar", "reconciliation"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => {
@@ -153,15 +170,25 @@ export default function DataSourcesPage() {
                   : "border-transparent text-text-secondary hover:text-text-primary"
               )}
             >
-              {tab === "variance" ? "Variance / P&L" : "AR / Invoices"}
+              {tab === "variance" ? "Variance / P&L" : tab === "ar" ? "AR / Invoices" : "Reconciliation"}
             </button>
           ))}
         </div>
 
         {/* Upload + Link areas */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <UploadArea onUpload={handleUpload} isUploading={isUploading} />
-          <LinkSheetArea shape={activeTab} onLink={handleLink} isLinking={isLinking} />
+        <div className={clsx("grid gap-4", activeTab !== "reconciliation" && "md:grid-cols-2")}>
+          <UploadArea
+            onUpload={handleUpload}
+            isUploading={isUploading}
+            hint={
+              activeTab === "reconciliation"
+                ? "Upload a GL CSV, sub-ledger CSV, or FX-rates CSV — we auto-detect the shape"
+                : undefined
+            }
+          />
+          {activeTab !== "reconciliation" && (
+            <LinkSheetArea shape={activeTab} onLink={handleLink} isLinking={isLinking} />
+          )}
         </div>
 
         {uploadResult && (

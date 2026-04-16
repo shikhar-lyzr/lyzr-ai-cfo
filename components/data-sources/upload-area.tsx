@@ -7,9 +7,10 @@ import { clsx } from "clsx";
 interface UploadAreaProps {
   onUpload: (file: File) => void;
   isUploading?: boolean;
+  hint?: string;
 }
 
-export function UploadArea({ onUpload, isUploading = false }: UploadAreaProps) {
+export function UploadArea({ onUpload, isUploading = false, hint }: UploadAreaProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -69,7 +70,7 @@ export function UploadArea({ onUpload, isUploading = false }: UploadAreaProps) {
               Drop a CSV file here or click to browse
             </p>
             <p className="text-xs text-text-secondary mt-1">
-              P&L, budget vs actual, trial balance — we auto-detect the format
+              {hint ?? "P&L, budget vs actual, trial balance — we auto-detect the format"}
             </p>
           </div>
         </>
