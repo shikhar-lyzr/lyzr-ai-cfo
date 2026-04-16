@@ -274,12 +274,22 @@ export function createFinancialTools(userId: string) {
         return { text: `All ${items.length} actions already exist (deduplicated by headline).` };
       }
 
-      // Validate dataSourceIds exist before inserting
-      const dsIds = [...new Set(newActions.map((a) => a.dataSourceId))];
-      const validDs = await prisma.dataSource.findMany({
-        where: { id: { in: dsIds }, userId },
-        select: { id: true },
-      });
+      // Validate dataSourceIds exist before inserting. Prisma's `in:` filter
+      // rejects `undefined`, so drop missing values before the query — the
+      // LLM occasionally omits dataSourceId on an action.
+      const dsIds = [
+        ...new Set(
+          newActions
+            .map((a) => a.dataSourceId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        ),
+      ];
+      const validDs = dsIds.length
+        ? await prisma.dataSource.findMany({
+            where: { id: { in: dsIds }, userId },
+            select: { id: true },
+          })
+        : [];
       const validDsIds = new Set(validDs.map((d) => d.id));
 
       // Sanitize all records first, skip any with bad data
