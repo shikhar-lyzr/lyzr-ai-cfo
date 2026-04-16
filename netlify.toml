@@ -7,3 +7,7 @@
 NODE_OPTIONS = "--max-old-space-size=4096"
 # Optional: disable Turbopack if it's causing high memory usage
 NEXT_PRIVATE_TURBOPACK = "0"
+# Tell Netlify's secrets scanner to ignore this non-sensitive key and build output
+SECRETS_SCAN_OMIT_KEYS = "NODE_OPTIONS"
+# Omit generated build output paths from secrets scanning (adjust if needed)
+SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/*,.netlify/functions-internal/*"
