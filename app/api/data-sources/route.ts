@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   const shape = searchParams.get("shape");
   const filtered = shape
-    ? sources.filter((s) => {
+    ? sources.filter((s: { metadata?: string | null }) => {
         try {
           return JSON.parse(s.metadata ?? "{}").shape === shape;
         } catch {
