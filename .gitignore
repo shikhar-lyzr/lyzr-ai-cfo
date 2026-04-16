@@ -53,3 +53,4 @@ scratch/
 .claude/*.local.json
 !.claude/settings.example.json
 !.env.example
+.claude/settings.json
