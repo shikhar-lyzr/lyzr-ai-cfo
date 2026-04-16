@@ -50,4 +50,6 @@ scratch/
 # worktrees
 .worktrees/
 .gitagent/
-.claude/
+.claude/*.local.json
+!.claude/settings.example.json
+!.env.example
