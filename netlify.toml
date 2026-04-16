@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+# Ensure all Node worker processes inherit the larger V8 heap
+NODE_OPTIONS = "--max-old-space-size=4096"
+# Optional: disable Turbopack if it's causing high memory usage
+NEXT_PRIVATE_TURBOPACK = "0"
