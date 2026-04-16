@@ -28,7 +28,7 @@ const SAMPLE_RECORDS = [
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { userId } = body;
+  const { userId, scenario = "variance" } = body;
 
   if (!userId) {
     return NextResponse.json({ error: "userId required" }, { status: 400 });
@@ -38,6 +38,12 @@ export async function POST(request: NextRequest) {
   const existingSources = await prisma.dataSource.count({ where: { userId } });
   if (existingSources > 0) {
     return NextResponse.json({ error: "You already have data uploaded. Go to Data Sources to manage your files." }, { status: 409 });
+  }
+
+  if (scenario === "reconciliation") {
+    const { seedReconciliation } = await import("@/lib/seed/reconciliation");
+    await seedReconciliation(userId);
+    return NextResponse.json({ scenario, ok: true });
   }
 
   const dataSource = await prisma.dataSource.create({
