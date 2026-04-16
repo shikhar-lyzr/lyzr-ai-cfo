@@ -1,12 +1,28 @@
 import { query } from "gitclaw";
 import type { GCMessage, Query } from "gitclaw";
-import { readFileSync, readdirSync, statSync } from "fs";
+import { cpSync, existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import { prisma } from "@/lib/db";
 import { createFinancialTools } from "./tools";
 import { buildAllowedTools } from "./allowed-tools";
 
-const AGENT_DIR = process.cwd() + "/agent";
+function resolveAgentDir(): string {
+  const source = join(process.cwd(), "agent");
+  // On AWS Lambda / Netlify Functions, /var/task is read-only but gitclaw
+  // needs to write .gitagent/ state inside the agent dir. Stage a writable
+  // copy under /tmp once per cold start.
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const writable = join(tmpdir(), "agent");
+    if (!existsSync(writable)) {
+      cpSync(source, writable, { recursive: true });
+    }
+    return writable;
+  }
+  return source;
+}
+
+const AGENT_DIR = resolveAgentDir();
 
 /**
  * Pre-load all skill SKILL.md files so the agent has them in-context.
