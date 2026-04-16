@@ -1,0 +1,201 @@
+entry_date,account,source_module,reference,memo,amount,currency,counterparty
+2026-01-31,2100,AP,INV-001,Received from Acme,417.00,USD,Acme
+2026-02-01,2110,AR,INV-002,Received from Beta Ltd,734.00,USD,Beta Ltd
+2026-02-02,4000,FA,INV-003,Received from Cirrus Inc,1051.00,USD,Cirrus Inc
+2026-02-03,5000,AP,INV-004,Received from Delta Co,1368.00,USD,Delta Co
+2026-02-04,2100,AR,INV-005,Received from Elm & Co,1685.00,USD,Elm & Co
+2026-02-05,2110,FA,INV-006,Received from Acme,2002.00,USD,Acme
+2026-02-06,4000,AP,INV-007,Received from Beta Ltd,2319.00,USD,Beta Ltd
+2026-02-07,5000,AR,INV-008,Received from Cirrus Inc,2636.00,USD,Cirrus Inc
+2026-02-08,2100,FA,INV-009,Received from Delta Co,2953.00,USD,Delta Co
+2026-02-09,2110,AP,INV-010,Received from Elm & Co,3270.00,USD,Elm & Co
+2026-02-10,4000,AR,INV-011,Received from Acme,3587.00,USD,Acme
+2026-02-11,5000,FA,INV-012,Received from Beta Ltd,3904.00,USD,Beta Ltd
+2026-02-12,2100,AP,INV-013,Received from Cirrus Inc,4221.00,USD,Cirrus Inc
+2026-02-13,2110,AR,INV-014,Received from Delta Co,4538.00,USD,Delta Co
+2026-02-14,4000,FA,INV-015,Received from Elm & Co,4855.00,USD,Elm & Co
+2026-02-15,5000,AP,INV-016,Received from Acme,5172.00,USD,Acme
+2026-02-16,2100,AR,INV-017,Received from Beta Ltd,5489.00,USD,Beta Ltd
+2026-02-17,2110,FA,INV-018,Received from Cirrus Inc,5806.00,USD,Cirrus Inc
+2026-02-18,4000,AP,INV-019,Received from Delta Co,6123.00,USD,Delta Co
+2026-02-19,5000,AR,INV-020,Received from Elm & Co,6440.00,USD,Elm & Co
+2026-02-20,2100,FA,INV-021,Received from Acme,6757.00,USD,Acme
+2026-02-21,2110,AP,INV-022,Received from Beta Ltd,7074.00,USD,Beta Ltd
+2026-02-22,4000,AR,INV-023,Received from Cirrus Inc,7391.00,USD,Cirrus Inc
+2026-02-23,5000,FA,INV-024,Received from Delta Co,7708.00,USD,Delta Co
+2026-02-24,2100,AP,INV-025,Received from Elm & Co,8025.00,USD,Elm & Co
+2026-02-25,2110,AR,INV-026,Received from Acme,8342.00,USD,Acme
+2026-02-26,4000,FA,INV-027,Received from Beta Ltd,8659.00,USD,Beta Ltd
+2026-02-27,5000,AP,INV-028,Received from Cirrus Inc,8976.00,USD,Cirrus Inc
+2026-02-28,2100,AR,INV-029,Received from Delta Co,9293.00,USD,Delta Co
+2026-03-01,2110,FA,INV-030,Received from Elm & Co,9610.00,USD,Elm & Co
+2026-03-02,4000,AP,INV-031,Received from Acme,9927.00,USD,Acme
+2026-03-03,5000,AR,INV-032,Received from Beta Ltd,10244.00,USD,Beta Ltd
+2026-03-04,2100,FA,INV-033,Received from Cirrus Inc,10561.00,USD,Cirrus Inc
+2026-03-05,2110,AP,INV-034,Received from Delta Co,10878.00,USD,Delta Co
+2026-03-06,4000,AR,INV-035,Received from Elm & Co,11195.00,USD,Elm & Co
+2026-03-07,5000,FA,INV-036,Received from Acme,11512.00,USD,Acme
+2026-03-08,2100,AP,INV-037,Received from Beta Ltd,11829.00,USD,Beta Ltd
+2026-03-09,2110,AR,INV-038,Received from Cirrus Inc,12146.00,USD,Cirrus Inc
+2026-03-10,4000,FA,INV-039,Received from Delta Co,12463.00,USD,Delta Co
+2026-03-11,5000,AP,INV-040,Received from Elm & Co,12780.00,USD,Elm & Co
+2026-03-12,2100,AR,INV-041,Received from Acme,13097.00,USD,Acme
+2026-03-13,2110,FA,INV-042,Received from Beta Ltd,13414.00,USD,Beta Ltd
+2026-03-14,4000,AP,INV-043,Received from Cirrus Inc,13731.00,USD,Cirrus Inc
+2026-03-15,5000,AR,INV-044,Received from Delta Co,14048.00,USD,Delta Co
+2026-03-16,2100,FA,INV-045,Received from Elm & Co,14365.00,USD,Elm & Co
+2026-03-17,2110,AP,INV-046,Received from Acme,14682.00,USD,Acme
+2026-03-18,4000,AR,INV-047,Received from Beta Ltd,14999.00,USD,Beta Ltd
+2026-03-19,5000,FA,INV-048,Received from Cirrus Inc,15316.00,USD,Cirrus Inc
+2026-03-20,2100,AP,INV-049,Received from Delta Co,15633.00,USD,Delta Co
+2026-03-21,2110,AR,INV-050,Received from Elm & Co,15950.00,USD,Elm & Co
+2026-03-22,4000,FA,INV-051,Received from Acme,16267.00,USD,Acme
+2026-03-23,5000,AP,INV-052,Received from Beta Ltd,16584.00,USD,Beta Ltd
+2026-03-24,2100,AR,INV-053,Received from Cirrus Inc,16901.00,USD,Cirrus Inc
+2026-03-25,2110,FA,INV-054,Received from Delta Co,17218.00,USD,Delta Co
+2026-03-26,4000,AP,INV-055,Received from Elm & Co,17535.00,USD,Elm & Co
+2026-03-27,5000,AR,INV-056,Received from Acme,17852.00,USD,Acme
+2026-03-28,2100,FA,INV-057,Received from Beta Ltd,18169.00,USD,Beta Ltd
+2026-03-29,2110,AP,INV-058,Received from Cirrus Inc,18486.00,USD,Cirrus Inc
+2026-03-30,4000,AR,INV-059,Received from Delta Co,18803.00,USD,Delta Co
+2026-03-31,5000,FA,INV-060,Received from Elm & Co,19120.00,USD,Elm & Co
+2026-04-01,2100,AP,INV-061,Received from Acme,19437.00,USD,Acme
+2026-04-02,2110,AR,INV-062,Received from Beta Ltd,19754.00,USD,Beta Ltd
+2026-04-03,4000,FA,INV-063,Received from Cirrus Inc,20071.00,USD,Cirrus Inc
+2026-04-04,5000,AP,INV-064,Received from Delta Co,20388.00,USD,Delta Co
+2026-04-05,2100,AR,INV-065,Received from Elm & Co,20705.00,USD,Elm & Co
+2026-04-06,2110,FA,INV-066,Received from Acme,21022.00,USD,Acme
+2026-04-07,4000,AP,INV-067,Received from Beta Ltd,21339.00,USD,Beta Ltd
+2026-04-08,5000,AR,INV-068,Received from Cirrus Inc,21656.00,USD,Cirrus Inc
+2026-04-09,2100,FA,INV-069,Received from Delta Co,21973.00,USD,Delta Co
+2026-04-10,2110,AP,INV-070,Received from Elm & Co,22290.00,USD,Elm & Co
+2026-04-11,4000,AR,INV-071,Received from Acme,22607.00,USD,Acme
+2026-04-12,5000,FA,INV-072,Received from Beta Ltd,22924.00,USD,Beta Ltd
+2026-04-13,2100,AP,INV-073,Received from Cirrus Inc,23241.00,USD,Cirrus Inc
+2026-04-14,2110,AR,INV-074,Received from Delta Co,23558.00,USD,Delta Co
+2026-01-31,4000,FA,INV-075,Received from Elm & Co,23875.00,USD,Elm & Co
+2026-02-01,5000,AP,INV-076,Received from Acme,24192.00,USD,Acme
+2026-02-02,2100,AR,INV-077,Received from Beta Ltd,24509.00,USD,Beta Ltd
+2026-02-03,2110,FA,INV-078,Received from Cirrus Inc,24826.00,USD,Cirrus Inc
+2026-02-04,4000,AP,INV-079,Received from Delta Co,25143.00,USD,Delta Co
+2026-02-05,5000,AR,INV-080,Received from Elm & Co,25460.00,USD,Elm & Co
+2026-02-06,2100,FA,INV-081,Received from Acme,25777.00,USD,Acme
+2026-02-07,2110,AP,INV-082,Received from Beta Ltd,26094.00,USD,Beta Ltd
+2026-02-08,4000,AR,INV-083,Received from Cirrus Inc,26411.00,USD,Cirrus Inc
+2026-02-09,5000,FA,INV-084,Received from Delta Co,26728.00,USD,Delta Co
+2026-02-10,2100,AP,INV-085,Received from Elm & Co,27045.00,USD,Elm & Co
+2026-02-11,2110,AR,INV-086,Received from Acme,27362.00,USD,Acme
+2026-02-12,4000,FA,INV-087,Received from Beta Ltd,27679.00,USD,Beta Ltd
+2026-02-13,5000,AP,INV-088,Received from Cirrus Inc,27996.00,USD,Cirrus Inc
+2026-02-14,2100,AR,INV-089,Received from Delta Co,28313.00,USD,Delta Co
+2026-02-15,2110,FA,INV-090,Received from Elm & Co,28630.00,USD,Elm & Co
+2026-02-16,4000,AP,INV-091,Received from Acme,28947.00,USD,Acme
+2026-02-17,5000,AR,INV-092,Received from Beta Ltd,29264.00,USD,Beta Ltd
+2026-02-18,2100,FA,INV-093,Received from Cirrus Inc,29581.00,USD,Cirrus Inc
+2026-02-19,2110,AP,INV-094,Received from Delta Co,29898.00,USD,Delta Co
+2026-02-20,4000,AR,INV-095,Received from Elm & Co,30215.00,USD,Elm & Co
+2026-02-21,5000,FA,INV-096,Received from Acme,30532.00,USD,Acme
+2026-02-22,2100,AP,INV-097,Received from Beta Ltd,30849.00,USD,Beta Ltd
+2026-02-23,2110,AR,INV-098,Received from Cirrus Inc,31166.00,USD,Cirrus Inc
+2026-02-24,4000,FA,INV-099,Received from Delta Co,31483.00,USD,Delta Co
+2026-02-25,5000,AP,INV-100,Received from Elm & Co,31800.00,USD,Elm & Co
+2026-02-26,2100,AR,INV-101,Received from Acme,32117.00,USD,Acme
+2026-02-27,2110,FA,INV-102,Received from Beta Ltd,32434.00,USD,Beta Ltd
+2026-02-28,4000,AP,INV-103,Received from Cirrus Inc,32751.00,USD,Cirrus Inc
+2026-03-01,5000,AR,INV-104,Received from Delta Co,33068.00,USD,Delta Co
+2026-03-02,2100,FA,INV-105,Received from Elm & Co,33385.00,USD,Elm & Co
+2026-03-03,2110,AP,INV-106,Received from Acme,33702.00,USD,Acme
+2026-03-04,4000,AR,INV-107,Received from Beta Ltd,34019.00,USD,Beta Ltd
+2026-03-05,5000,FA,INV-108,Received from Cirrus Inc,34336.00,USD,Cirrus Inc
+2026-03-06,2100,AP,INV-109,Received from Delta Co,34653.00,USD,Delta Co
+2026-03-07,2110,AR,INV-110,Received from Elm & Co,34970.00,USD,Elm & Co
+2026-03-08,4000,FA,INV-111,Received from Acme,35287.00,USD,Acme
+2026-03-09,5000,AP,INV-112,Received from Beta Ltd,35604.00,USD,Beta Ltd
+2026-03-10,2100,AR,INV-113,Received from Cirrus Inc,35921.00,USD,Cirrus Inc
+2026-03-11,2110,FA,INV-114,Received from Delta Co,36238.00,USD,Delta Co
+2026-03-12,4000,AP,INV-115,Received from Elm & Co,36555.00,USD,Elm & Co
+2026-03-13,5000,AR,INV-116,Received from Acme,36872.00,USD,Acme
+2026-03-14,2100,FA,INV-117,Received from Beta Ltd,37189.00,USD,Beta Ltd
+2026-03-15,2110,AP,INV-118,Received from Cirrus Inc,37506.00,USD,Cirrus Inc
+2026-03-16,4000,AR,INV-119,Received from Delta Co,37823.00,USD,Delta Co
+2026-03-17,5000,FA,INV-120,Received from Elm & Co,38140.00,USD,Elm & Co
+2026-03-18,2100,AP,INV-121,Received from Acme,38457.00,USD,Acme
+2026-03-19,2110,AR,INV-122,Received from Beta Ltd,38774.00,USD,Beta Ltd
+2026-03-20,4000,FA,INV-123,Received from Cirrus Inc,39091.00,USD,Cirrus Inc
+2026-03-21,5000,AP,INV-124,Received from Delta Co,39408.00,USD,Delta Co
+2026-03-22,2100,AR,INV-125,Received from Elm & Co,39725.00,USD,Elm & Co
+2026-03-23,2110,FA,INV-126,Received from Acme,40042.00,USD,Acme
+2026-03-24,4000,AP,INV-127,Received from Beta Ltd,40359.00,USD,Beta Ltd
+2026-03-25,5000,AR,INV-128,Received from Cirrus Inc,40676.00,USD,Cirrus Inc
+2026-03-26,2100,FA,INV-129,Received from Delta Co,40993.00,USD,Delta Co
+2026-03-27,2110,AP,INV-130,Received from Elm & Co,41310.00,USD,Elm & Co
+2026-03-28,4000,AR,INV-131,Received from Acme,41627.00,USD,Acme
+2026-03-29,5000,FA,INV-132,Received from Beta Ltd,41944.00,USD,Beta Ltd
+2026-03-30,2100,AP,INV-133,Received from Cirrus Inc,42261.00,USD,Cirrus Inc
+2026-03-31,2110,AR,INV-134,Received from Delta Co,42578.00,USD,Delta Co
+2026-04-01,4000,FA,INV-135,Received from Elm & Co,42895.00,USD,Elm & Co
+2026-04-02,5000,AP,INV-136,Received from Acme,43212.00,USD,Acme
+2026-04-03,2100,AR,INV-137,Received from Beta Ltd,43529.00,USD,Beta Ltd
+2026-04-04,2110,FA,INV-138,Received from Cirrus Inc,43846.00,USD,Cirrus Inc
+2026-04-05,4000,AP,INV-139,Received from Delta Co,44163.00,USD,Delta Co
+2026-04-06,5000,AR,INV-140,Received from Elm & Co,44480.00,USD,Elm & Co
+2026-04-07,2100,FA,INV-141,Received from Acme,44797.00,USD,Acme
+2026-04-08,2110,AP,INV-142,Received from Beta Ltd,45114.00,USD,Beta Ltd
+2026-04-09,4000,AR,INV-143,Received from Cirrus Inc,45431.00,USD,Cirrus Inc
+2026-04-10,5000,FA,INV-144,Received from Delta Co,45748.00,USD,Delta Co
+2026-04-11,2100,AP,INV-145,Received from Elm & Co,46065.00,USD,Elm & Co
+2026-04-12,2110,AR,INV-146,Received from Acme,46382.00,USD,Acme
+2026-04-13,4000,FA,INV-147,Received from Beta Ltd,46699.00,USD,Beta Ltd
+2026-04-14,5000,AP,INV-148,Received from Cirrus Inc,47016.00,USD,Cirrus Inc
+2026-01-31,2100,AR,INV-149,Received from Delta Co,47333.00,USD,Delta Co
+2026-02-01,2110,FA,INV-150,Received from Elm & Co,47650.00,USD,Elm & Co
+2026-02-02,4000,AP,INV-151,Received from Acme,47967.00,USD,Acme
+2026-02-03,5000,AR,INV-152,Received from Beta Ltd,48284.00,USD,Beta Ltd
+2026-02-04,2100,FA,INV-153,Received from Cirrus Inc,48601.00,USD,Cirrus Inc
+2026-02-05,2110,AP,INV-154,Received from Delta Co,48918.00,USD,Delta Co
+2026-02-06,4000,AR,INV-155,Received from Elm & Co,49235.00,USD,Elm & Co
+2026-02-07,5000,FA,INV-156,Received from Acme,49552.00,USD,Acme
+2026-02-08,2100,AP,INV-157,Received from Beta Ltd,49869.00,USD,Beta Ltd
+2026-02-09,2110,AR,INV-158,Received from Cirrus Inc,286.00,USD,Cirrus Inc
+2026-02-10,4000,FA,INV-159,Received from Delta Co,603.00,USD,Delta Co
+2026-02-11,5000,AP,INV-160,Received from Elm & Co,920.00,USD,Elm & Co
+2026-02-12,2100,AR,INV-161,Received from Acme,1000.25,USD,Acme
+2026-02-13,2110,FA,INV-162,Received from Beta Ltd,1500.50,USD,Beta Ltd
+2026-02-14,4000,AP,INV-163,Received from Cirrus Inc,2000.75,USD,Cirrus Inc
+2026-02-15,5000,AR,INV-164,Received from Delta Co,2500.85,USD,Delta Co
+2026-02-16,2100,FA,INV-165,Received from Elm & Co,3000.95,USD,Elm & Co
+2026-02-17,2110,AP,INV-166,Received from Acme,2000.00,USD,Acme
+2026-02-18,4000,AR,INV-167,Received from Beta Ltd,2300.00,USD,Beta Ltd
+2026-02-19,5000,FA,INV-168,Received from Cirrus Inc,2600.00,USD,Cirrus Inc
+2026-02-20,2100,AP,INV-169,Received from Delta Co,2900.00,USD,Delta Co
+2026-02-21,2110,AR,INV-170,Received from Elm & Co,3200.00,USD,Elm & Co
+2026-04-10,4000,FA,FZS-171,ACME PMT #171,5000.00,USD,Acme, Inc.
+2026-04-10,5000,AP,FZS-172,ACME PMT #172,6000.00,USD,Acme, Inc.
+2026-04-10,2100,AR,FZS-173,ACME PMT #173,7000.00,USD,Acme, Inc.
+2026-04-10,2110,FA,FZS-174,ACME PMT #174,8000.00,USD,Acme, Inc.
+2026-04-10,4000,AP,FZS-175,ACME PMT #175,9000.00,USD,Acme, Inc.
+2026-02-27,5000,AR,SUB-ONLY-001,Sub-only from Acme,5992.00,USD,Acme
+2026-02-28,2100,FA,SUB-ONLY-002,Sub-only from Beta Ltd,6309.00,USD,Beta Ltd
+2026-03-01,2110,AP,SUB-ONLY-003,Sub-only from Cirrus Inc,6626.00,USD,Cirrus Inc
+2026-03-02,4000,AR,SUB-ONLY-004,Sub-only from Delta Co,6943.00,USD,Delta Co
+2026-03-03,5000,FA,SUB-ONLY-005,Sub-only from Elm & Co,7260.00,USD,Elm & Co
+2026-03-04,2100,AP,SUB-ONLY-006,Sub-only from Acme,7577.00,USD,Acme
+2026-03-05,2110,AR,SUB-ONLY-007,Sub-only from Beta Ltd,7894.00,USD,Beta Ltd
+2026-03-06,4000,FA,SUB-ONLY-008,Sub-only from Cirrus Inc,8211.00,USD,Cirrus Inc
+2026-03-07,5000,AP,SUB-ONLY-009,Sub-only from Delta Co,8528.00,USD,Delta Co
+2026-03-08,2100,AR,SUB-ONLY-010,Sub-only from Elm & Co,8845.00,USD,Elm & Co
+2026-03-09,2110,FA,INV-186,Received from Acme,9162.00,USD,Acme
+2026-03-10,4000,AP,INV-187,Received from Beta Ltd,9479.00,USD,Beta Ltd
+2026-03-11,5000,AR,INV-188,Received from Cirrus Inc,9796.00,USD,Cirrus Inc
+2026-03-12,2100,FA,INV-189,Received from Delta Co,10113.00,USD,Delta Co
+2026-03-13,2110,AP,INV-190,Received from Elm & Co,10430.00,USD,Elm & Co
+2026-03-14,4000,AR,INV-191,Received from Acme,10747.00,USD,Acme
+2026-03-15,5000,FA,INV-192,Received from Beta Ltd,11064.00,USD,Beta Ltd
+2026-03-16,2100,AP,INV-193,Received from Cirrus Inc,11381.00,USD,Cirrus Inc
+2026-03-17,2110,AR,INV-194,Received from Delta Co,11698.00,USD,Delta Co
+2026-03-18,4000,FA,INV-195,Received from Elm & Co,12015.00,USD,Elm & Co
+2026-03-15,2100,AP,INV-196,Received from Acme,1000.00,EUR,Acme
+2026-03-20,2100,AP,INV-197,Received from Beta Ltd,2500.00,EUR,Beta Ltd
+2026-03-25,2100,AP,INV-198,Received from Cirrus Inc,800.00,GBP,Cirrus Inc
+2026-04-01,2100,AP,INV-199,Received from Delta Co,1500.00,GBP,Delta Co
+2026-04-05,2100,AP,INV-200,Received from Elm & Co,5000.00,EUR,Elm & Co
