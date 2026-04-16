@@ -50,3 +50,4 @@ scratch/
 # worktrees
 .worktrees/
 .gitagent/
+.claude/

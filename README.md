@@ -378,11 +378,12 @@ Create a `.env` file in the project root:
 
 ```env
 # Database (SQLite — no external DB required)
-DATABASE_URL="file:./dev.db"
+# Set to a local SQLite file path (do not commit actual values)
+DATABASE_URL="<path-to-sqlite-db>"
 
 # Lyzr AI Studio (PRIMARY — powers the agent via gitclaw)
 LYZR_API_KEY="sk-your-lyzr-api-key"
-OPENAI_API_KEY="sk-your-lyzr-api-key"   # Same key — gitclaw uses OpenAI-compatible auth
+OPENAI_API_KEY="sk-your-openai-api-key"   # Same key — gitclaw uses OpenAI-compatible auth
 
 # Google Gemini (OPTIONAL — fallback for CSV column mapping and chat fallback)
 GEMINI_API_KEY="your-gemini-key"
