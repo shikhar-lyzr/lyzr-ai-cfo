@@ -28,8 +28,40 @@ export function createReconciliationTools(userId: string) {
       if (args.status) where.matchStatus = args.status;
 
       const rows = args.side === "gl"
-        ? await prisma.gLEntry.findMany({ where, take: limit })
-        : await prisma.subLedgerEntry.findMany({ where, take: limit });
+        ? await prisma.gLEntry.findMany({
+            where,
+            take: limit,
+            select: {
+              id: true,
+              entryDate: true,
+              account: true,
+              reference: true,
+              memo: true,
+              amount: true,
+              txnCurrency: true,
+              baseAmount: true,
+              debitCredit: true,
+              counterparty: true,
+              matchStatus: true,
+            },
+          })
+        : await prisma.subLedgerEntry.findMany({
+            where,
+            take: limit,
+            select: {
+              id: true,
+              entryDate: true,
+              account: true,
+              reference: true,
+              memo: true,
+              amount: true,
+              txnCurrency: true,
+              baseAmount: true,
+              counterparty: true,
+              matchStatus: true,
+              sourceModule: true,
+            },
+          });
 
       return {
         text: `Found ${rows.length} ${args.side} entries.`,
@@ -51,6 +83,17 @@ export function createReconciliationTools(userId: string) {
         where: { userId },
         orderBy: { startedAt: "desc" },
         take: Math.min(args.limit ?? 10, 25),
+        select: {
+          id: true,
+          startedAt: true,
+          completedAt: true,
+          triggeredBy: true,
+          totalGL: true,
+          totalSub: true,
+          matched: true,
+          partial: true,
+          unmatched: true,
+        },
       });
       return { text: `${runs.length} match run(s).`, details: { runs } };
     }
@@ -79,8 +122,22 @@ export function createReconciliationTools(userId: string) {
 
       const breaks = await prisma.break.findMany({
         where,
-        orderBy: [{ severity: "desc" }, { ageDays: "desc" }, { baseAmount: "desc" }],
+        orderBy: [{ severityRank: "desc" }, { ageDays: "desc" }, { baseAmount: "desc" }],
         take: Math.min(args.limit ?? 25, 50),
+        select: {
+          id: true,
+          side: true,
+          entryId: true,
+          amount: true,
+          baseAmount: true,
+          txnCurrency: true,
+          ageDays: true,
+          ageBucket: true,
+          severity: true,
+          severityRank: true,
+          status: true,
+          actionId: true,
+        },
       });
       return { text: `${breaks.length} breaks matching filter.`, details: { count: breaks.length, breaks } };
     }
@@ -111,12 +168,27 @@ export function createReconciliationTools(userId: string) {
       });
       const topBreaks = await prisma.break.findMany({
         where: { matchRunId: lastRun.id, status: "open" },
-        orderBy: [{ severity: "desc" }, { baseAmount: "desc" }],
+        orderBy: [{ severityRank: "desc" }, { baseAmount: "desc" }],
         take: 5,
+        select: {
+          id: true,
+          side: true,
+          entryId: true,
+          amount: true,
+          baseAmount: true,
+          txnCurrency: true,
+          ageDays: true,
+          ageBucket: true,
+          severity: true,
+          severityRank: true,
+          status: true,
+          actionId: true,
+        },
       });
+      // Each link covers 2 rows (1 GL + 1 sub), so matched * 2 gives row count reconciled
       const matchRate = lastRun.totalGL + lastRun.totalSub === 0
         ? 0
-        : (lastRun.matched + lastRun.partial) / (lastRun.totalGL + lastRun.totalSub);
+        : (lastRun.matched * 2) / (lastRun.totalGL + lastRun.totalSub);
 
       return {
         text:

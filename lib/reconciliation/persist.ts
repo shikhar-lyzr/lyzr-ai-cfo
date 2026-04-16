@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { runMatchRun } from "./match-engine";
-import { ageDays, ageBucket, severity } from "./ageing";
+import { ageDays, ageBucket, severity, severityRank } from "./ageing";
 import { parseGlCsv } from "@/lib/csv/gl-parser";
 import { parseSubLedgerCsv } from "@/lib/csv/sub-ledger-parser";
 import { parseFxRatesCsv } from "@/lib/csv/fx-rates-parser";
@@ -133,6 +133,7 @@ export async function saveMatchRun(
           const entry =
             b.side === "gl_only" ? glMap.get(b.entryId)! : subMap.get(b.entryId)!;
           const days = ageDays(entry.entryDate, today);
+          const sev = severity(days, entry.baseAmount);
           return {
             matchRunId: run.id,
             side: b.side,
@@ -142,7 +143,8 @@ export async function saveMatchRun(
             txnCurrency: entry.txnCurrency,
             ageDays: days,
             ageBucket: ageBucket(days),
-            severity: severity(days, entry.baseAmount),
+            severity: sev,
+            severityRank: severityRank(sev),
             status: "open",
           };
         }),
@@ -175,12 +177,14 @@ export async function reAgeOpenBreaks(userId: string): Promise<number> {
         : await prisma.subLedgerEntry.findUnique({ where: { id: b.entryId } });
     if (!entry) continue;
     const days = ageDays(entry.entryDate, today);
+    const sev = severity(days, entry.baseAmount);
     await prisma.break.update({
       where: { id: b.id },
       data: {
         ageDays: days,
         ageBucket: ageBucket(days),
-        severity: severity(days, entry.baseAmount),
+        severity: sev,
+        severityRank: severityRank(sev),
       },
     });
     updated++;

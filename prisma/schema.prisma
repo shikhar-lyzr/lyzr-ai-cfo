@@ -228,6 +228,7 @@ model Break {
   ageDays     Int
   ageBucket   String
   severity    String
+  severityRank Int    @default(0)
   status      String  @default("open")
   actionId    String?
 

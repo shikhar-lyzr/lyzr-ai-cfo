@@ -18,3 +18,7 @@ export function severity(days: number, baseAmount: number): Severity {
   if (days > 30 || abs > 1_000) return "medium";
   return "low";
 }
+
+export function severityRank(s: "low" | "medium" | "high"): number {
+  return s === "high" ? 3 : s === "medium" ? 2 : 1;
+}
