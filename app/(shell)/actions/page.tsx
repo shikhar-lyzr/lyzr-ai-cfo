@@ -1,4 +1,5 @@
 import { ActionsRequired } from "@/components/command-center/actions-required";
+import { StatsStrip } from "@/components/command-center/stats-strip";
 
 export default function ActionsPage() {
   return (
@@ -15,7 +16,8 @@ export default function ActionsPage() {
         </p>
       </div>
 
-      <ActionsRequired limit={1000} showViewAll={false} />
+      <StatsStrip />
+      <ActionsRequired limit={1000} showViewAll={false} showFilters title="All Actions" />
     </div>
   );
 }

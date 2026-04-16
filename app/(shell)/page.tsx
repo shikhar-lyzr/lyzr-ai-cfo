@@ -1,14 +1,32 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { SearchBar } from "@/components/command-center/search-bar";
 import { JourneyCard } from "@/components/command-center/journey-card";
 import { AgentInsights } from "@/components/command-center/agent-insights";
 import { ActionsRequired } from "@/components/command-center/actions-required";
+import { StatsStrip } from "@/components/command-center/stats-strip";
 import { SectionHeader } from "@/components/shared/section-header";
 import { JOURNEYS } from "@/lib/config/journeys";
 
+function firstName(name: string | null | undefined, email: string | null | undefined): string {
+  if (name && name.trim()) return name.split(" ")[0];
+  if (email) return email.split("@")[0];
+  return "there";
+}
+
 export default function CommandCenter() {
+  const [greeting, setGreeting] = useState<string>("");
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setGreeting(firstName(data.name, data.email));
+      });
+  }, []);
+
   return (
     <div className="flex flex-col items-center max-w-5xl mx-auto">
       {/* Hero */}
@@ -21,7 +39,7 @@ export default function CommandCenter() {
         className="text-3xl font-semibold tracking-tight text-center"
         style={{ fontFamily: "var(--font-playfair)" }}
       >
-        Welcome, Vidur
+        {greeting ? `Welcome, ${greeting}` : "Welcome"}
       </h1>
       <p className="text-sm text-muted-foreground mt-1 text-center">
         CFO&apos;s Office AgenticOS — Autonomous financial intelligence
@@ -31,6 +49,11 @@ export default function CommandCenter() {
       <div className="mt-8 w-full flex justify-center">
         <SearchBar />
       </div>
+
+      {/* Stats overview */}
+      <section className="w-full mt-10">
+        <StatsStrip />
+      </section>
 
       {/* Agent Journeys */}
       <section className="w-full mt-10">

@@ -1,106 +1,99 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Bell } from "lucide-react";
 import { SectionHeader } from "@/components/shared/section-header";
-import { PriorityBadge } from "@/components/shared/priority-badge";
 import { ARActionCard } from "./ar-action-card";
-import type { Action } from "@/lib/types";
+import { VarianceActionCard } from "./variance-action-card";
+import { ActionModal } from "./action-modal";
+import {
+  FilterBar,
+  type TypeFilter,
+  type SeverityFilter,
+  type StatusFilter,
+} from "./filter-bar";
+import type { Action, Severity } from "@/lib/types";
 
-function severityToPriority(severity: string): "critical" | "high" | "medium" | "low" {
-  if (severity === "critical") return "critical";
-  if (severity === "warning") return "high";
-  return "medium";
-}
-
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function ActionCard({ action, onAction }: { action: Action; onAction: (id: string, status: string) => void }) {
-  return (
-    <div className="p-4 border-b border-border last:border-b-0">
-      <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-          <Bell size={16} className="text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-medium text-foreground truncate">{action.headline}</h4>
-            <PriorityBadge priority={severityToPriority(action.severity)} />
-          </div>
-          <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground">
-            <span className="uppercase tracking-wider">{action.type}</span>
-            <span>·</span>
-            <span>{timeAgo(action.createdAt)}</span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{action.detail}</p>
-          <div className="flex items-center gap-2 mt-2.5">
-            <button
-              onClick={() => onAction(action.id, "approved")}
-              className="text-xs px-3 py-1.5 rounded-[var(--radius)] bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
-            >
-              Approve
-            </button>
-            <button
-              onClick={() => onAction(action.id, "dismissed")}
-              className="text-xs px-3 py-1.5 rounded-[var(--radius)] border border-destructive text-destructive font-medium hover:bg-destructive/5 transition-colors"
-            >
-              Reject
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+const severityOrder: Record<Severity, number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
 
 interface ActionsRequiredProps {
   limit?: number;
   showViewAll?: boolean;
+  showFilters?: boolean;
+  title?: string;
 }
 
-export function ActionsRequired({ limit = 5, showViewAll = true }: ActionsRequiredProps) {
+export function ActionsRequired({
+  limit = 5,
+  showViewAll = true,
+  showFilters = false,
+  title = "Actions Required",
+}: ActionsRequiredProps) {
   const router = useRouter();
   const [actions, setActions] = useState<Action[]>([]);
+  const [selectedAction, setSelectedAction] = useState<Action | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    showFilters ? "all" : "pending"
+  );
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!data?.userId) return;
-        return fetch(`/api/actions?userId=${data.userId}&status=pending&limit=${limit}`);
-      })
-      .then((r) => r?.ok ? r.json() : [])
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setActions(data.map((a: Action) => ({
-            ...a,
-            createdAt: new Date(a.createdAt),
-          })));
-        }
+        if (data?.userId) setUserId(data.userId);
       });
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    const params = new URLSearchParams({ userId });
+    if (!showFilters) params.set("status", "pending");
+    params.set("limit", String(limit));
+    fetch(`/api/actions?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setActions(
+            data.map((a: Action) => ({
+              ...a,
+              createdAt: new Date(a.createdAt),
+            }))
+          );
+        }
+      });
+  }, [userId, limit, showFilters]);
+
+  const filtered = useMemo(() => {
+    const list = actions
+      .filter((a) => typeFilter === "all" || a.type === typeFilter)
+      .filter((a) => severityFilter === "all" || a.severity === severityFilter)
+      .filter((a) => statusFilter === "all" || a.status === statusFilter)
+      .sort((a, b) => {
+        const sevDiff = severityOrder[a.severity] - severityOrder[b.severity];
+        if (sevDiff !== 0) return sevDiff;
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      });
+    return showFilters ? list : list.slice(0, limit);
+  }, [actions, typeFilter, severityFilter, statusFilter, showFilters, limit]);
 
   const handleAction = async (id: string, status: string) => {
     const action = actions.find((a) => a.id === id);
     if (!action) return;
 
-    // AR operations
     if (action.type === "ar_followup") {
       let op: "mark_sent" | "snooze" | "escalate" | "dismiss" = "dismiss";
       if (status === "mark_sent") op = "mark_sent";
       else if (status === "snooze") op = "snooze";
       else if (status === "escalate") op = "escalate";
-      else if (status === "dismiss") op = "dismiss";
+      else if (status === "dismiss" || status === "dismissed") op = "dismiss";
 
       if (op !== "dismiss") {
         await fetch(`/api/actions/${id}/ar`, {
@@ -109,7 +102,6 @@ export function ActionsRequired({ limit = 5, showViewAll = true }: ActionsRequir
           body: JSON.stringify({ op, days: 7 }),
         });
       } else {
-        // Mark as dismissed
         await fetch(`/api/actions/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -117,7 +109,6 @@ export function ActionsRequired({ limit = 5, showViewAll = true }: ActionsRequir
         });
       }
     } else {
-      // Regular action
       await fetch(`/api/actions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -128,41 +119,70 @@ export function ActionsRequired({ limit = 5, showViewAll = true }: ActionsRequir
     setActions((prev) => prev.filter((a) => a.id !== id));
   };
 
+  const compact = !showFilters;
+  const totalPending = actions.length;
+
   return (
     <div>
-      <SectionHeader title="Actions Required" count={actions.length} />
-      <div className="mt-3 bg-card border border-border rounded-[var(--radius)]">
-        {actions.length === 0 ? (
+      <SectionHeader title={title} count={compact ? totalPending : filtered.length} />
+      <div className="mt-3 bg-card border border-border rounded-[var(--radius)] overflow-hidden flex flex-col">
+        {showFilters && (
+          <FilterBar
+            activeType={typeFilter}
+            activeSeverity={severityFilter}
+            activeStatus={statusFilter}
+            onTypeChange={setTypeFilter}
+            onSeverityChange={setSeverityFilter}
+            onStatusChange={setStatusFilter}
+          />
+        )}
+        {filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
-            No pending actions
+            {actions.length === 0 ? "No pending actions" : "No actions match the current filters"}
           </div>
         ) : (
-          <>
-            {actions.map((action) => {
+          <div className={compact ? "max-h-[360px] overflow-y-auto" : ""}>
+            {filtered.map((action) => {
               if (action.type === "ar_followup") {
                 return (
                   <ARActionCard
                     key={action.id}
                     action={action}
                     onAction={(id, op) => handleAction(id, op)}
+                    onOpen={() => setSelectedAction(action)}
                   />
                 );
               }
               return (
-                <ActionCard key={action.id} action={action} onAction={handleAction} />
+                <VarianceActionCard
+                  key={action.id}
+                  action={action}
+                  onAction={handleAction}
+                  onOpen={() => setSelectedAction(action)}
+                />
               );
             })}
-            {showViewAll && actions.length >= limit && (
-              <button
-                onClick={() => router.push("/actions")}
-                className="w-full py-2.5 text-xs font-medium text-primary hover:underline"
-              >
-                View all actions
-              </button>
-            )}
-          </>
+          </div>
+        )}
+        {showViewAll && totalPending > 0 && (
+          <button
+            onClick={() => router.push("/actions")}
+            className="w-full py-2.5 text-xs font-medium text-primary hover:underline border-t border-border bg-card sticky bottom-0"
+          >
+            View all {totalPending} action{totalPending !== 1 ? "s" : ""}
+          </button>
         )}
       </div>
+      {selectedAction && (
+        <ActionModal
+          action={selectedAction}
+          onClose={() => setSelectedAction(null)}
+          onAction={async (id, op) => {
+            await handleAction(id, op);
+            setSelectedAction(null);
+          }}
+        />
+      )}
     </div>
   );
 }

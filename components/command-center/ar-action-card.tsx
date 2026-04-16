@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Clock, AlertTriangle, MessageSquare, X, HelpCircle } from "lucide-react";
+import { Copy, Clock, AlertTriangle, MessageSquare, X } from "lucide-react";
 import { PriorityBadge } from "@/components/shared/priority-badge";
 import type { Action } from "@/lib/types";
 
@@ -26,9 +26,10 @@ function severityToPriority(severity: string): "critical" | "high" | "medium" | 
 interface ARActionCardProps {
   action: Action;
   onAction: (id: string, op: "mark_sent" | "snooze" | "escalate" | "dismiss") => void;
+  onOpen?: () => void;
 }
 
-export function ARActionCard({ action, onAction }: ARActionCardProps) {
+export function ARActionCard({ action, onAction, onOpen }: ARActionCardProps) {
   const router = useRouter();
   const [showDraft, setShowDraft] = useState(false);
   const [draftBody, setDraftBody] = useState<string | null>(null);
@@ -79,7 +80,7 @@ export function ARActionCard({ action, onAction }: ARActionCardProps) {
   };
 
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div onClick={() => onOpen?.()} className="border-b border-border last:border-b-0 cursor-pointer">
       <div className="p-4 space-y-3">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -98,7 +99,10 @@ export function ARActionCard({ action, onAction }: ARActionCardProps) {
             <p className="text-xs text-muted-foreground mt-1.5">{action.detail}</p>
           </div>
           <button
-            onClick={() => onAction(action.id, "dismiss")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(action.id, "dismiss");
+            }}
             className="text-muted-foreground hover:text-foreground transition-colors"
           >
             <X size={16} />
@@ -108,7 +112,10 @@ export function ARActionCard({ action, onAction }: ARActionCardProps) {
         {/* AR Action Buttons */}
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={handleCopyAndSend}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleCopyAndSend();
+            }}
             disabled={loadingDraft}
             className="text-xs px-3 py-1.5 rounded-[var(--radius)] bg-success text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5"
           >
@@ -116,25 +123,45 @@ export function ARActionCard({ action, onAction }: ARActionCardProps) {
             Copy & Mark Sent
           </button>
           <button
-            onClick={() => onAction(action.id, "snooze")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(action.id, "snooze");
+            }}
             className="text-xs px-3 py-1.5 rounded-[var(--radius)] border border-border text-foreground font-medium hover:bg-secondary/50 transition-colors flex items-center gap-1.5"
           >
             <Clock size={12} />
             Snooze 7d
           </button>
           <button
-            onClick={() => onAction(action.id, "escalate")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(action.id, "escalate");
+            }}
             className="text-xs px-3 py-1.5 rounded-[var(--radius)] border border-warning text-warning font-medium hover:bg-warning/5 transition-colors flex items-center gap-1.5"
           >
             <AlertTriangle size={12} />
             Escalate
           </button>
           <button
-            onClick={handleViewDraft}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleViewDraft();
+            }}
             className="text-xs px-3 py-1.5 rounded-[var(--radius)] border border-primary text-primary font-medium hover:bg-primary/5 transition-colors flex items-center gap-1.5"
           >
             <MessageSquare size={12} />
             {showDraft ? "Hide Draft" : "View Draft"}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const msg = `Please draft a helpful follow-up for: ${action.headline}\n\nDetails: ${action.detail}`;
+              router.push(`/agent-console?message=${encodeURIComponent(msg)}`);
+            }}
+            className="text-xs px-3 py-1.5 rounded-[var(--radius)] border border-border text-foreground font-medium hover:bg-secondary/50 transition-colors flex items-center gap-1.5"
+          >
+            <MessageSquare size={12} />
+            Ask AI
           </button>
         </div>
 
