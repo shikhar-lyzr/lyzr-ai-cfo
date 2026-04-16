@@ -16,11 +16,13 @@ model User {
   name           String
   credits        Float         @default(0)
   createdAt      DateTime      @default(now())
-  dataSources    DataSource[]
-  actions        Action[]
-  chatMessages   ChatMessage[]
-  actionEvents   ActionEvent[]
-  documents      Document[]
+  dataSources        DataSource[]
+  actions            Action[]
+  chatMessages       ChatMessage[]
+  actionEvents       ActionEvent[]
+  documents          Document[]
+  matchRuns          MatchRun[]
+  journalAdjustments JournalAdjustment[]
 }
 
 model DataSource {
@@ -33,11 +35,13 @@ model DataSource {
   metadata    String?
   createdAt   DateTime @default(now())
 
-  user      User              @relation(fields: [userId], references: [id])
-  records   FinancialRecord[]
-  actions   Action[]
-  invoices  Invoice[]
-  documents Document[]
+  user             User              @relation(fields: [userId], references: [id])
+  records          FinancialRecord[]
+  actions          Action[]
+  invoices         Invoice[]
+  documents        Document[]
+  glEntries        GLEntry[]
+  subLedgerEntries SubLedgerEntry[]
 }
 
 model FinancialRecord {
@@ -129,4 +133,149 @@ model Document {
 
   user       User        @relation(fields: [userId], references: [id])
   dataSource DataSource? @relation(fields: [dataSourceId], references: [id])
+}
+
+model GLEntry {
+  id           String   @id @default(cuid())
+  dataSourceId String
+  entryDate    DateTime
+  postingDate  DateTime
+  account      String
+  reference    String
+  memo         String?
+  amount       Float
+  txnCurrency  String
+  baseAmount   Float
+  debitCredit  String
+  counterparty String?
+  matchStatus  String   @default("unmatched")
+  createdAt    DateTime @default(now())
+
+  dataSource DataSource  @relation(fields: [dataSourceId], references: [id])
+  matches    MatchLink[]
+
+  @@index([dataSourceId, matchStatus])
+  @@index([reference])
+}
+
+model SubLedgerEntry {
+  id           String   @id @default(cuid())
+  dataSourceId String
+  sourceModule String
+  entryDate    DateTime
+  account      String
+  reference    String
+  memo         String?
+  amount       Float
+  txnCurrency  String
+  baseAmount   Float
+  counterparty String?
+  matchStatus  String   @default("unmatched")
+  createdAt    DateTime @default(now())
+
+  dataSource DataSource  @relation(fields: [dataSourceId], references: [id])
+  matches    MatchLink[]
+
+  @@index([dataSourceId, matchStatus])
+  @@index([reference])
+}
+
+model MatchRun {
+  id             String    @id @default(cuid())
+  userId         String
+  triggeredBy    String
+  strategyConfig String
+  totalGL        Int
+  totalSub       Int
+  matched        Int
+  partial        Int
+  unmatched      Int
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  user   User        @relation(fields: [userId], references: [id])
+  links  MatchLink[]
+  breaks Break[]
+
+  @@index([userId, startedAt])
+}
+
+model MatchLink {
+  id          String @id @default(cuid())
+  matchRunId  String
+  glEntryId   String
+  subEntryId  String
+  strategy    String
+  confidence  Float
+  amountDelta Float
+  dateDelta   Int
+
+  matchRun MatchRun       @relation(fields: [matchRunId], references: [id])
+  glEntry  GLEntry        @relation(fields: [glEntryId], references: [id])
+  subEntry SubLedgerEntry @relation(fields: [subEntryId], references: [id])
+
+  @@index([matchRunId])
+}
+
+model Break {
+  id          String  @id @default(cuid())
+  matchRunId  String
+  side        String
+  entryId     String
+  amount      Float
+  baseAmount  Float
+  txnCurrency String
+  ageDays     Int
+  ageBucket   String
+  severity    String
+  status      String  @default("open")
+  actionId    String?
+
+  matchRun  MatchRun             @relation(fields: [matchRunId], references: [id])
+  proposals AdjustmentProposal[]
+
+  @@index([matchRunId, status])
+  @@index([ageBucket, severity])
+}
+
+model AdjustmentProposal {
+  id              String   @id @default(cuid())
+  breakId         String
+  proposedBy      String
+  description     String
+  debitAccount    String
+  creditAccount   String
+  amount          Float
+  baseAmount      Float
+  currency        String
+  journalDate     DateTime
+  status          String   @default("pending")
+  approvedBy      String?
+  approvedAt      DateTime?
+  postedJournalId String?
+  createdAt       DateTime @default(now())
+
+  break Break @relation(fields: [breakId], references: [id])
+}
+
+model JournalAdjustment {
+  id         String   @id @default(cuid())
+  userId     String
+  proposalId String   @unique
+  entryDate  DateTime
+  lines      String
+  postedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model FXRate {
+  id           String   @id @default(cuid())
+  fromCurrency String
+  toCurrency   String
+  rate         Float
+  asOf         DateTime
+
+  @@unique([fromCurrency, toCurrency, asOf])
+  @@index([asOf])
 }
