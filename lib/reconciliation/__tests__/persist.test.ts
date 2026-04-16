@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db";
 import { saveMatchRun, loadLedgerEntries } from "../persist";
 import { DEFAULT_STRATEGY_CONFIG } from "../types";
 
-describe("persist layer", () => {
+// Neon serverless pooler round-trips add up across beforeEach setup plus
+// saveMatchRun's chain of writes; 5s vitest default is not enough.
+describe("persist layer", { timeout: 30_000 }, () => {
   let userId = "";
   let glDsId = "";
   let subDsId = "";
