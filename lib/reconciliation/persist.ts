@@ -56,91 +56,97 @@ export async function saveMatchRun(
 ): Promise<string> {
   const result = runMatchRun(gl, sub, config);
 
-  const run = await prisma.matchRun.create({
-    data: {
-      userId,
-      triggeredBy,
-      strategyConfig: JSON.stringify(config),
-      totalGL: result.stats.totalGL,
-      totalSub: result.stats.totalSub,
-      matched: result.stats.matched,
-      partial: result.stats.partial,
-      unmatched: result.stats.unmatched,
-      completedAt: new Date(),
-    },
-  });
-
-  if (result.links.length > 0) {
-    await prisma.matchLink.createMany({
-      data: result.links.map((l) => ({
-        matchRunId: run.id,
-        glEntryId: l.glId,
-        subEntryId: l.subId,
-        strategy: l.strategy,
-        confidence: l.confidence,
-        amountDelta: l.amountDelta,
-        dateDelta: l.dateDelta,
-      })),
+  // Wrap the write chain in a transaction so a mid-chain failure cannot leave
+  // a MatchRun row whose link/break/status side-effects are partially realized.
+  return prisma.$transaction(async (tx) => {
+    const run = await tx.matchRun.create({
+      data: {
+        userId,
+        triggeredBy,
+        strategyConfig: config,
+        totalGL: result.stats.totalGL,
+        totalSub: result.stats.totalSub,
+        matched: result.stats.matched,
+        partial: result.stats.partial,
+        unmatched: result.stats.unmatched,
+        completedAt: new Date(),
+      },
     });
 
-    const matchedGL = result.links.filter((l) => !l.partial).map((l) => l.glId);
-    const partialGL = result.links.filter((l) => l.partial).map((l) => l.glId);
-    const matchedSub = result.links.filter((l) => !l.partial).map((l) => l.subId);
-    const partialSub = result.links.filter((l) => l.partial).map((l) => l.subId);
-
-    if (matchedGL.length > 0) {
-      await prisma.gLEntry.updateMany({
-        where: { id: { in: matchedGL } },
-        data: { matchStatus: "matched" },
-      });
-    }
-    if (partialGL.length > 0) {
-      await prisma.gLEntry.updateMany({
-        where: { id: { in: partialGL } },
-        data: { matchStatus: "partial" },
-      });
-    }
-    if (matchedSub.length > 0) {
-      await prisma.subLedgerEntry.updateMany({
-        where: { id: { in: matchedSub } },
-        data: { matchStatus: "matched" },
-      });
-    }
-    if (partialSub.length > 0) {
-      await prisma.subLedgerEntry.updateMany({
-        where: { id: { in: partialSub } },
-        data: { matchStatus: "partial" },
-      });
-    }
-  }
-
-  if (result.breaks.length > 0) {
-    const today = new Date();
-    const glMap = new Map(gl.map((e) => [e.id, e]));
-    const subMap = new Map(sub.map((e) => [e.id, e]));
-
-    await prisma.break.createMany({
-      data: result.breaks.map((b) => {
-        const entry =
-          b.side === "gl_only" ? glMap.get(b.entryId)! : subMap.get(b.entryId)!;
-        const days = ageDays(entry.entryDate, today);
-        return {
+    if (result.links.length > 0) {
+      await tx.matchLink.createMany({
+        data: result.links.map((l) => ({
           matchRunId: run.id,
-          side: b.side,
-          entryId: b.entryId,
-          amount: entry.amount,
-          baseAmount: entry.baseAmount,
-          txnCurrency: entry.txnCurrency,
-          ageDays: days,
-          ageBucket: ageBucket(days),
-          severity: severity(days, entry.baseAmount),
-          status: "open",
-        };
-      }),
-    });
-  }
+          glEntryId: l.glId,
+          subEntryId: l.subId,
+          strategy: l.strategy,
+          confidence: l.confidence,
+          amountDelta: l.amountDelta,
+          dateDelta: l.dateDelta,
+        })),
+      });
 
-  return run.id;
+      const matchedGL = result.links.filter((l) => !l.partial).map((l) => l.glId);
+      const partialGL = result.links.filter((l) => l.partial).map((l) => l.glId);
+      const matchedSub = result.links.filter((l) => !l.partial).map((l) => l.subId);
+      const partialSub = result.links.filter((l) => l.partial).map((l) => l.subId);
+
+      if (matchedGL.length > 0) {
+        await tx.gLEntry.updateMany({
+          where: { id: { in: matchedGL } },
+          data: { matchStatus: "matched" },
+        });
+      }
+      if (partialGL.length > 0) {
+        await tx.gLEntry.updateMany({
+          where: { id: { in: partialGL } },
+          data: { matchStatus: "partial" },
+        });
+      }
+      if (matchedSub.length > 0) {
+        await tx.subLedgerEntry.updateMany({
+          where: { id: { in: matchedSub } },
+          data: { matchStatus: "matched" },
+        });
+      }
+      if (partialSub.length > 0) {
+        await tx.subLedgerEntry.updateMany({
+          where: { id: { in: partialSub } },
+          data: { matchStatus: "partial" },
+        });
+      }
+    }
+
+    if (result.breaks.length > 0) {
+      const today = new Date();
+      // Invariant: result.breaks only references ids in gl/sub (runMatchRun
+      // derives them from the same arrays), so the map lookups are total.
+      const glMap = new Map(gl.map((e) => [e.id, e]));
+      const subMap = new Map(sub.map((e) => [e.id, e]));
+
+      await tx.break.createMany({
+        data: result.breaks.map((b) => {
+          const entry =
+            b.side === "gl_only" ? glMap.get(b.entryId)! : subMap.get(b.entryId)!;
+          const days = ageDays(entry.entryDate, today);
+          return {
+            matchRunId: run.id,
+            side: b.side,
+            entryId: b.entryId,
+            amount: entry.amount,
+            baseAmount: entry.baseAmount,
+            txnCurrency: entry.txnCurrency,
+            ageDays: days,
+            ageBucket: ageBucket(days),
+            severity: severity(days, entry.baseAmount),
+            status: "open",
+          };
+        }),
+      });
+    }
+
+    return run.id;
+  }, { timeout: 30_000 });
 }
 
 export async function reAgeOpenBreaks(userId: string): Promise<number> {
