@@ -16,7 +16,7 @@
 
 ```
 prisma/
-  schema.prisma                         # +8 models, +3 User relations
+  schema.prisma                         # +8 models, +2 User relations
   migrations/<ts>_reconciliation/…      # generated
 
 lib/reconciliation/
@@ -97,7 +97,7 @@ model GLEntry {
   matchStatus  String   @default("unmatched")
   createdAt    DateTime @default(now())
 
-  dataSource DataSource  @relation(fields: [dataSourceId], references: [id])
+  dataSource DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   matches    MatchLink[]
 
   @@index([dataSourceId, matchStatus])
@@ -119,7 +119,7 @@ model SubLedgerEntry {
   matchStatus  String   @default("unmatched")
   createdAt    DateTime @default(now())
 
-  dataSource DataSource  @relation(fields: [dataSourceId], references: [id])
+  dataSource DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   matches    MatchLink[]
 
   @@index([dataSourceId, matchStatus])
@@ -130,7 +130,7 @@ model MatchRun {
   id             String    @id @default(cuid())
   userId         String
   triggeredBy    String
-  strategyConfig String
+  strategyConfig Json
   totalGL        Int
   totalSub       Int
   matched        Int
@@ -156,9 +156,9 @@ model MatchLink {
   amountDelta Float
   dateDelta   Int
 
-  matchRun MatchRun       @relation(fields: [matchRunId], references: [id])
-  glEntry  GLEntry        @relation(fields: [glEntryId], references: [id])
-  subEntry SubLedgerEntry @relation(fields: [subEntryId], references: [id])
+  matchRun MatchRun       @relation(fields: [matchRunId], references: [id], onDelete: Cascade)
+  glEntry  GLEntry        @relation(fields: [glEntryId], references: [id], onDelete: Cascade)
+  subEntry SubLedgerEntry @relation(fields: [subEntryId], references: [id], onDelete: Cascade)
 
   @@index([matchRunId])
 }
@@ -177,7 +177,7 @@ model Break {
   status      String  @default("open")
   actionId    String?
 
-  matchRun  MatchRun             @relation(fields: [matchRunId], references: [id])
+  matchRun  MatchRun             @relation(fields: [matchRunId], references: [id], onDelete: Cascade)
   proposals AdjustmentProposal[]
 
   @@index([matchRunId, status])
@@ -201,7 +201,9 @@ model AdjustmentProposal {
   postedJournalId String?
   createdAt       DateTime @default(now())
 
-  break Break @relation(fields: [breakId], references: [id])
+  break Break @relation(fields: [breakId], references: [id], onDelete: Cascade)
+
+  @@index([breakId])
 }
 
 model JournalAdjustment {
@@ -209,7 +211,7 @@ model JournalAdjustment {
   userId     String
   proposalId String   @unique
   entryDate  DateTime
-  lines      String
+  lines      Json
   postedAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
