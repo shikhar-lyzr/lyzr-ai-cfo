@@ -71,8 +71,11 @@ export type BreakResult = {
 export type MatchStats = {
   totalGL: number;
   totalSub: number;
+  // Total links (pairs). A partial link with an amount delta still counts here.
   matched: number;
+  // Subset of `matched` that carry an amount delta and will need an adjustment.
   partial: number;
+  // Row-count of unmatched entries on either side (gl_only + sub_only).
   unmatched: number;
 };
 

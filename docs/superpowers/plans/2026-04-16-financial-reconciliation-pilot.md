@@ -345,8 +345,11 @@ export type BreakResult = {
 export type MatchStats = {
   totalGL: number;
   totalSub: number;
+  // Total links (pairs). A partial link with an amount delta still counts here.
   matched: number;
+  // Subset of `matched` that carry an amount delta and will need an adjustment.
   partial: number;
+  // Row-count of unmatched entries on either side (gl_only + sub_only).
   unmatched: number;
 };
 
@@ -1167,7 +1170,8 @@ describe("runMatchRun", () => {
     expect(res.breaks).toContainEqual({ side: "sub_only", entryId: "s5" });
     expect(res.breaks).toHaveLength(2);
 
-    expect(res.stats).toEqual({ totalGL: 4, totalSub: 4, matched: 2, partial: 1, unmatched: 2 });
+    // matched = total links (3); partial is a subset of matched (1); unmatched = break rows (2).
+    expect(res.stats).toEqual({ totalGL: 4, totalSub: 4, matched: 3, partial: 1, unmatched: 2 });
   });
 
   it("honours disabled strategies", () => {
@@ -1242,17 +1246,16 @@ export function runMatchRun(
     ...residualSub.map((e) => ({ side: "sub_only" as const, entryId: e.id })),
   ];
 
-  const matched = links.filter((l) => !l.partial).length;
-  const partial = links.filter((l) => l.partial).length;
-
+  // matched counts every link (a partial is still a known pair with a delta);
+  // partial is a subset counter — how many of the matched carry an amount delta.
   return {
     links,
     breaks,
     stats: {
       totalGL,
       totalSub,
-      matched,
-      partial,
+      matched: links.length,
+      partial: links.filter((l) => l.partial).length,
       unmatched: breaks.length,
     },
   };

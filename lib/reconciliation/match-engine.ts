@@ -48,17 +48,16 @@ export function runMatchRun(
     ...residualSub.map((e) => ({ side: "sub_only" as const, entryId: e.id })),
   ];
 
-  const matched = links.filter((l) => !l.partial).length;
-  const partial = links.filter((l) => l.partial).length;
-
+  // matched counts every link (a partial is still a known pair with a delta);
+  // partial is a subset counter — how many of the matched carry an amount delta.
   return {
     links,
     breaks,
     stats: {
       totalGL,
       totalSub,
-      matched,
-      partial,
+      matched: links.length,
+      partial: links.filter((l) => l.partial).length,
       unmatched: breaks.length,
     },
   };

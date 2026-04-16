@@ -52,7 +52,8 @@ describe("runMatchRun", () => {
     expect(res.breaks).toContainEqual({ side: "sub_only", entryId: "s5" });
     expect(res.breaks).toHaveLength(2);
 
-    expect(res.stats).toEqual({ totalGL: 4, totalSub: 4, matched: 2, partial: 1, unmatched: 2 });
+    // matched = total links (3); partial is a subset of matched (1); unmatched = break rows (2).
+    expect(res.stats).toEqual({ totalGL: 4, totalSub: 4, matched: 3, partial: 1, unmatched: 2 });
   });
 
   it("honours disabled strategies", () => {
