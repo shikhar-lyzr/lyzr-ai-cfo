@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { createFinancialTools } from "./tools";
 import { createReconciliationTools } from "./tools/reconciliation";
 import { buildAllowedTools } from "./allowed-tools";
+import { buildJourneyContext } from "./journey-context";
 
 function resolveAgentDir(): string {
   const source = join(process.cwd(), "agent");
@@ -98,9 +99,10 @@ function ensureApiKey(): void {
 /**
  * Build system prompt context with the user's financial data summary.
  */
-async function buildContext(
+export async function buildContext(
   userId: string,
-  actionId?: string
+  actionId?: string,
+  journeyId?: string
 ): Promise<string> {
   const [dataSources, pendingActions, recentMessages, actionEvents] = await Promise.all([
     prisma.dataSource.findMany({
@@ -129,6 +131,10 @@ async function buildContext(
 
   const parts: string[] = [];
 
+  // Journey context (prepended first so the journey header appears at top)
+  const journey = await buildJourneyContext(userId, journeyId);
+  if (journey) parts.push(journey);
+
   // Data sources
   if (dataSources.length > 0) {
     parts.push(
@@ -145,17 +151,27 @@ async function buildContext(
 
   // Pending actions
   if (pendingActions.length > 0) {
-    parts.push(
-      "## Open Actions (" +
-        pendingActions.length +
-        ")\n" +
-        pendingActions
-          .map(
-            (a) =>
-              `- [${a.severity.toUpperCase()}] ${a.headline}: ${a.detail} (ID: ${a.id})`
-          )
-          .join("\n")
-    );
+    if (journey) {
+      const bySev: Record<string, number> = { high: 0, medium: 0, low: 0 };
+      for (const a of pendingActions) bySev[a.severity] = (bySev[a.severity] ?? 0) + 1;
+      parts.push(
+        `## Open Actions (${pendingActions.length})\n` +
+          `Breakdown — high: ${bySev.high ?? 0}, medium: ${bySev.medium ?? 0}, low: ${bySev.low ?? 0}. ` +
+          `Call \`list_actions\` if specifics are needed.`
+      );
+    } else {
+      parts.push(
+        "## Open Actions (" +
+          pendingActions.length +
+          ")\n" +
+          pendingActions
+            .map(
+              (a) =>
+                `- [${a.severity.toUpperCase()}] ${a.headline}: ${a.detail} (ID: ${a.id})`
+            )
+            .join("\n")
+      );
+    }
   }
 
   // Specific action context
@@ -222,11 +238,12 @@ export async function chatWithAgent(
   userId: string,
   message: string,
   actionId: string | undefined,
-  callbacks: AgentStreamCallbacks
+  callbacks: AgentStreamCallbacks,
+  opts?: { journeyId?: string }
 ): Promise<void> {
   ensureApiKey();
 
-  const context = await buildContext(userId, actionId);
+  const context = await buildContext(userId, actionId, opts?.journeyId);
   const tools = buildTools(userId);
 
   let result: Query;
