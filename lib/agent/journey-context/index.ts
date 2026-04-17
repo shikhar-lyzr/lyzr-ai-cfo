@@ -1,3 +1,5 @@
+import { buildReconciliationContext } from "./financial-reconciliation";
+
 export type JourneyContextBuilder = (userId: string) => Promise<string>;
 
 export const JOURNEY_TITLES: Record<string, string> = {
@@ -9,7 +11,9 @@ export const JOURNEY_TITLES: Record<string, string> = {
   "regulatory-returns": "Regulatory Returns",
 };
 
-const BUILDERS: Record<string, JourneyContextBuilder> = {};
+const BUILDERS: Record<string, JourneyContextBuilder> = {
+  "financial-reconciliation": buildReconciliationContext,
+};
 
 export async function buildJourneyContext(
   userId: string,
