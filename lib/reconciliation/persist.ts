@@ -204,10 +204,15 @@ export async function loadFxRates(): Promise<FXRateInput[]> {
 
 export async function ingestFxRates(csvHeaders: string[], csvRows: string[][]) {
   const rates = parseFxRatesCsv(csvHeaders, csvRows);
-  await prisma.$transaction(async (tx) => {
+  
+  // Chunking to avoid exhausting the connection pool, but no interactive transaction 
+  // because that causes timeouts and "Transaction not found" errors on Neon.
+  const chunkSize = 50;
+  for (let i = 0; i < rates.length; i += chunkSize) {
+    const chunk = rates.slice(i, i + chunkSize);
     await Promise.all(
-      rates.map((r) =>
-        tx.fXRate.upsert({
+      chunk.map((r) =>
+        prisma.fXRate.upsert({
           where: {
             fromCurrency_toCurrency_asOf: {
               fromCurrency: r.fromCurrency,
@@ -220,7 +225,7 @@ export async function ingestFxRates(csvHeaders: string[], csvRows: string[][]) {
         })
       )
     );
-  }, { timeout: 30_000 });
+  }
   return rates.length;
 }
 
