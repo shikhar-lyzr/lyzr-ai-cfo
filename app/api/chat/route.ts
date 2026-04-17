@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { chatWithAgent } from "@/lib/agent";
 import { resetStepCounter } from "@/lib/agent/classify-event";
+import { JOURNEY_TITLES } from "@/lib/agent/journey-context";
 import type { PipelineStep } from "@/lib/agent/pipeline-types";
 
 function sseWrite(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: string, data: unknown) {
@@ -10,7 +11,7 @@ function sseWrite(controller: ReadableStreamDefaultController, encoder: TextEnco
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { userId, message, actionId } = body;
+  const { userId, message, actionId, journeyId } = body;
 
   if (!userId || !message) {
     return new Response(
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
             sseWrite(controller, encoder, "error", { error: errorMsg });
             await finish(fullResponse || `Error: ${errorMsg}`);
           },
-        });
+        }, { journeyId });
       } else {
         // Fallback placeholder
         const recentActions = await prisma.action.findMany({
@@ -74,7 +75,10 @@ export async function POST(request: NextRequest) {
           take: 10,
         });
 
-        fullResponse = `I've reviewed your financial data. Currently there are ${recentActions.length} open items in your actions feed. What specific area would you like me to analyze?`;
+        const journeyTitle = journeyId ? (JOURNEY_TITLES[journeyId] ?? journeyId) : null;
+        fullResponse = journeyTitle
+          ? `You're on the ${journeyTitle} journey. AI engine isn't configured — set OPENAI_API_KEY, LYZR_API_KEY, or GEMINI_API_KEY to enable analysis.`
+          : `I've reviewed your financial data. Currently there are ${recentActions.length} open items in your actions feed. What specific area would you like me to analyze?`;
 
         // Simulate streaming
         const words = fullResponse.split(" ");
