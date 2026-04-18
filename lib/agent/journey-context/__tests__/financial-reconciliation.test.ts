@@ -25,7 +25,7 @@ describe("buildReconciliationContext", { timeout: 30_000 }, () => {
   it("returns stats + 'all resolved' footer when zero open breaks", async () => {
     await prisma.matchRun.create({
       data: {
-        userId, triggeredBy: "manual", strategyConfig: {},
+        userId, periodKey: "2026-04", triggeredBy: "manual", strategyConfig: {},
         totalGL: 10, totalSub: 10, matched: 10, partial: 0, unmatched: 0,
         startedAt: new Date(),
       },
@@ -40,7 +40,7 @@ describe("buildReconciliationContext", { timeout: 30_000 }, () => {
   it("returns stats + top-5 list when breaks exist", async () => {
     const run = await prisma.matchRun.create({
       data: {
-        userId, triggeredBy: "upload", strategyConfig: {},
+        userId, periodKey: "2026-04", triggeredBy: "upload", strategyConfig: {},
         totalGL: 10, totalSub: 10, matched: 7, partial: 0, unmatched: 3,
         startedAt: new Date(),
       },

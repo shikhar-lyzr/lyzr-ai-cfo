@@ -24,11 +24,11 @@ describe("reconciliation write tools", { timeout: 30_000 }, () => {
   async function seedBreak() {
     const ds = await prisma.dataSource.create({ data: { userId, type: "gl", name: "t", status: "ready" } });
     const run = await prisma.matchRun.create({
-      data: { userId, triggeredBy: "manual", strategyConfig: {}, totalGL: 0, totalSub: 0, matched: 0, partial: 0, unmatched: 1 },
+      data: { userId, periodKey: "2026-04", triggeredBy: "manual", strategyConfig: {}, totalGL: 0, totalSub: 0, matched: 0, partial: 0, unmatched: 1 },
     });
     const gl = await prisma.gLEntry.create({
       data: {
-        dataSourceId: ds.id, entryDate: new Date(), postingDate: new Date(),
+        dataSourceId: ds.id, periodKey: "2026-04", entryDate: new Date(), postingDate: new Date(),
         account: "2100", reference: "X", amount: 50, txnCurrency: "USD", baseAmount: 50,
         debitCredit: "DR",
       },

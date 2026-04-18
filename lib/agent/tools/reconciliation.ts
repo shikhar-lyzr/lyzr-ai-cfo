@@ -219,19 +219,43 @@ export function createReconciliationTools(userId: string) {
       required: [],
     },
     async (args) => {
-      const { gl, sub } = await loadLedgerEntries(userId);
-      if (gl.length === 0 || sub.length === 0) {
-        const missing = gl.length === 0 && sub.length === 0
+      // TODO(task-8): make run_matching period-aware. For now, pick the most
+      // recent period with both GL and sub rows and run there.
+      const glCount = await prisma.gLEntry.count({
+        where: { dataSource: { userId, status: "ready" } },
+      });
+      const subCount = await prisma.subLedgerEntry.count({
+        where: { dataSource: { userId, status: "ready" } },
+      });
+      if (glCount === 0 || subCount === 0) {
+        const missing = glCount === 0 && subCount === 0
           ? "GL and sub-ledger"
-          : gl.length === 0 ? "GL" : "sub-ledger";
+          : glCount === 0 ? "GL" : "sub-ledger";
         return {
           text: `Cannot run matching — ${missing} data is missing. Upload the missing CSV(s) first.`,
-          details: { glCount: gl.length, subCount: sub.length },
+          details: { glCount, subCount },
+        };
+      }
+      const period = await prisma.reconPeriod.findFirst({
+        where: { userId },
+        orderBy: { periodKey: "desc" },
+      });
+      if (!period) {
+        return {
+          text: `Cannot run matching — no reconciliation period found. Upload GL/sub-ledger CSVs first.`,
+          details: { glCount, subCount },
+        };
+      }
+      const { gl, sub } = await loadLedgerEntries(userId, period.periodKey);
+      if (gl.length === 0 || sub.length === 0) {
+        return {
+          text: `Cannot run matching — period ${period.periodKey} is missing one side.`,
+          details: { periodKey: period.periodKey, glCount: gl.length, subCount: sub.length },
         };
       }
       const config = { ...DEFAULT_STRATEGY_CONFIG, ...(args.strategyConfig ?? {}) };
-      const runId = await saveMatchRun(userId, gl, sub, config, "agent");
-      return { text: `Match run ${runId} completed.`, details: { runId } };
+      const runId = await saveMatchRun(userId, period.periodKey, gl, sub, config, "agent");
+      return { text: `Match run ${runId} completed.`, details: { runId, periodKey: period.periodKey } };
     }
   );
 
