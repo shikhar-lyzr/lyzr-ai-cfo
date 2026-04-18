@@ -23,6 +23,7 @@ model User {
   documents          Document[]
   matchRuns          MatchRun[]
   journalAdjustments JournalAdjustment[]
+  reconPeriods       ReconPeriod[]
 }
 
 model DataSource {
@@ -150,12 +151,14 @@ model GLEntry {
   counterparty String?
   matchStatus  String   @default("unmatched")
   createdAt    DateTime @default(now())
+  periodKey    String
 
   dataSource DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   matches    MatchLink[]
 
   @@index([dataSourceId, matchStatus])
   @@index([reference])
+  @@index([periodKey])
 }
 
 model SubLedgerEntry {
@@ -172,12 +175,14 @@ model SubLedgerEntry {
   counterparty String?
   matchStatus  String   @default("unmatched")
   createdAt    DateTime @default(now())
+  periodKey    String
 
   dataSource DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   matches    MatchLink[]
 
   @@index([dataSourceId, matchStatus])
   @@index([reference])
+  @@index([periodKey])
 }
 
 model MatchRun {
@@ -192,12 +197,14 @@ model MatchRun {
   unmatched      Int
   startedAt      DateTime  @default(now())
   completedAt    DateTime?
+  periodKey      String
 
   user   User        @relation(fields: [userId], references: [id])
   links  MatchLink[]
   breaks Break[]
 
   @@index([userId, startedAt])
+  @@index([userId, periodKey, startedAt])
 }
 
 model MatchLink {
@@ -281,4 +288,17 @@ model FXRate {
 
   @@unique([fromCurrency, toCurrency, asOf])
   @@index([asOf])
+}
+
+model ReconPeriod {
+  id        String   @id @default(cuid())
+  userId    String
+  periodKey String
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, periodKey])
+  @@index([userId, createdAt])
 }
