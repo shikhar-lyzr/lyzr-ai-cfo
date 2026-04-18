@@ -1,7 +1,7 @@
 import { getReconciliationStats, getTopBreaks } from "@/lib/reconciliation/stats";
 
-export async function buildReconciliationContext(userId: string): Promise<string> {
-  const stats = await getReconciliationStats(userId);
+export async function buildReconciliationContext(userId: string, periodKey: string): Promise<string> {
+  const stats = await getReconciliationStats(userId, periodKey);
 
   if (!stats.hasData) {
     return `## Current Journey: Financial Reconciliation\nNo match run yet — user needs to upload a GL CSV and a sub-ledger CSV to kick off reconciliation.`;
@@ -21,7 +21,7 @@ export async function buildReconciliationContext(userId: string): Promise<string
     return `${header}\nAll breaks resolved. Nothing outstanding.`;
   }
 
-  const top = await getTopBreaks(userId, 5);
+  const top = await getTopBreaks(userId, periodKey, 5);
   // getTopBreaks returns: { id, ref, amount, currency, type, age, counterparty, severity }
   const lines = top
     .map(

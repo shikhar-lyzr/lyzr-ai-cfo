@@ -4,6 +4,7 @@ import { JourneyPage } from "@/components/journey/journey-page";
 import { MetricCard } from "@/components/shared/metric-card";
 import { DonutChart } from "@/components/shared/donut-chart";
 import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { getReconciliationStats, getTopBreaks } from "@/lib/reconciliation/stats";
 
 type TopBreak = Awaited<ReturnType<typeof getTopBreaks>>[number];
@@ -11,8 +12,19 @@ type TopBreak = Awaited<ReturnType<typeof getTopBreaks>>[number];
 export default async function FinancialReconciliationPage() {
   const session = await getSession();
   const userId = session?.userId ?? null;
-  const stats = userId ? await getReconciliationStats(userId) : { hasData: false as const };
-  const topBreaks: TopBreak[] = userId && stats.hasData ? await getTopBreaks(userId, 10) : [];
+  // Temporary: resolve newest period. Task 10 will add a proper period picker.
+  const newest = userId
+    ? await prisma.reconPeriod.findFirst({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+  const periodKey = newest?.periodKey;
+  const stats = userId && periodKey
+    ? await getReconciliationStats(userId, periodKey)
+    : { hasData: false as const };
+  const topBreaks: TopBreak[] =
+    userId && periodKey && stats.hasData ? await getTopBreaks(userId, periodKey, 10) : [];
 
   if (!stats.hasData) {
     return (

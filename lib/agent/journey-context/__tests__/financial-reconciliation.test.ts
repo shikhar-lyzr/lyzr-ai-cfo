@@ -17,7 +17,7 @@ describe("buildReconciliationContext", { timeout: 30_000 }, () => {
   });
 
   it("returns 'no match run yet' when user has no match run", async () => {
-    const out = await buildReconciliationContext(userId);
+    const out = await buildReconciliationContext(userId, "2026-04");
     expect(out).toContain("## Current Journey: Financial Reconciliation");
     expect(out).toContain("No match run yet");
   });
@@ -30,7 +30,7 @@ describe("buildReconciliationContext", { timeout: 30_000 }, () => {
         startedAt: new Date(),
       },
     });
-    const out = await buildReconciliationContext(userId);
+    const out = await buildReconciliationContext(userId, "2026-04");
     expect(out).toContain("Match rate: 100.0%");
     expect(out).toContain("Open breaks: 0");
     expect(out).toContain("All breaks resolved");
@@ -57,7 +57,7 @@ describe("buildReconciliationContext", { timeout: 30_000 }, () => {
         },
       });
     }
-    const out = await buildReconciliationContext(userId);
+    const out = await buildReconciliationContext(userId, "2026-04");
     expect(out).toContain("Match rate: 70.0%");
     expect(out).toContain("Open breaks: 6");
     expect(out).toContain("### Top 5 open breaks");

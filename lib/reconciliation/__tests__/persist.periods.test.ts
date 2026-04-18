@@ -15,8 +15,8 @@ function subRow(date: string, ref: string, amount: number): string[] {
 }
 
 async function cleanup() {
-  await prisma.matchLink.deleteMany({});
-  await prisma.break.deleteMany({});
+  await prisma.matchLink.deleteMany({ where: { matchRun: { userId: TEST_USER } } });
+  await prisma.break.deleteMany({ where: { matchRun: { userId: TEST_USER } } });
   await prisma.matchRun.deleteMany({ where: { userId: TEST_USER } });
   await prisma.gLEntry.deleteMany({ where: { dataSource: { userId: TEST_USER } } });
   await prisma.subLedgerEntry.deleteMany({ where: { dataSource: { userId: TEST_USER } } });
