@@ -21,9 +21,11 @@ export async function loadLedgerEntries(
 }> {
   const gl = await prisma.gLEntry.findMany({
     where: { periodKey, dataSource: { userId, status: "ready" } },
+    orderBy: { entryDate: "asc" },
   });
   const sub = await prisma.subLedgerEntry.findMany({
     where: { periodKey, dataSource: { userId, status: "ready" } },
+    orderBy: { entryDate: "asc" },
   });
 
   return {

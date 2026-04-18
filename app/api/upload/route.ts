@@ -262,10 +262,14 @@ async function maybeAutoMatch(userId: string, periodsTouched: string[]): Promise
   if (!both) return [];
   const runIds: string[] = [];
   for (const periodKey of periodsTouched) {
-    const { gl, sub } = await loadLedgerEntries(userId, periodKey);
-    if (gl.length === 0 || sub.length === 0) continue;
-    const runId = await saveMatchRun(userId, periodKey, gl, sub, DEFAULT_STRATEGY_CONFIG, "upload");
-    runIds.push(runId);
+    try {
+      const { gl, sub } = await loadLedgerEntries(userId, periodKey);
+      if (gl.length === 0 || sub.length === 0) continue;
+      const runId = await saveMatchRun(userId, periodKey, gl, sub, DEFAULT_STRATEGY_CONFIG, "upload");
+      runIds.push(runId);
+    } catch (err) {
+      console.error(`[upload] auto-match failed for period ${periodKey}:`, err);
+    }
   }
   return runIds;
 }

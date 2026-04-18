@@ -60,7 +60,9 @@ describe("persist layer", { timeout: 30_000 }, () => {
     const { gl, sub } = await loadLedgerEntries(userId, "2026-04");
     expect(gl).toHaveLength(2);
     expect(sub).toHaveLength(1);
-    expect(gl[0].baseAmount).toBe(100);
+    // loadLedgerEntries orders by entryDate asc → 2026-01-01 (20000) first, then 2026-04-01 (100).
+    expect(gl[0].baseAmount).toBe(20000);
+    expect(gl[1].baseAmount).toBe(100);
   });
 
   it("saveMatchRun persists run, links, breaks, and flips entry status", async () => {
