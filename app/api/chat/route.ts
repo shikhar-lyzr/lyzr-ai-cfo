@@ -4,6 +4,7 @@ import { chatWithAgent } from "@/lib/agent";
 import { resetStepCounter } from "@/lib/agent/classify-event";
 import { JOURNEY_TITLES } from "@/lib/agent/journey-context";
 import type { PipelineStep } from "@/lib/agent/pipeline-types";
+import { isValidPeriodKey } from "@/lib/reconciliation/period";
 
 function sseWrite(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: string, data: unknown) {
   controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
@@ -16,6 +17,13 @@ export async function POST(request: NextRequest) {
   if (!userId || !message) {
     return new Response(
       JSON.stringify({ error: "userId and message required" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (periodKey !== undefined && (typeof periodKey !== "string" || !isValidPeriodKey(periodKey))) {
+    return new Response(
+      JSON.stringify({ error: "invalid periodKey" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
