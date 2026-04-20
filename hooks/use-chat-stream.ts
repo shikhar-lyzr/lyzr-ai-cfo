@@ -24,7 +24,7 @@ export function useChatStream(userId: string | null) {
   });
   const abortRef = useRef<AbortController | null>(null);
 
-  const sendMessage = useCallback(async (content: string, opts?: { actionId?: string; journeyId?: string }) => {
+  const sendMessage = useCallback(async (content: string, opts?: { actionId?: string; journeyId?: string; periodKey?: string }) => {
     if (!userId || !content.trim()) return;
 
     abortRef.current = new AbortController();
@@ -45,6 +45,7 @@ export function useChatStream(userId: string | null) {
           message: content,
           actionId: opts?.actionId,
           journeyId: opts?.journeyId,
+          periodKey: opts?.periodKey,
         }),
         signal: abortRef.current.signal,
       });

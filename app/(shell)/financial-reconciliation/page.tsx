@@ -8,6 +8,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getReconciliationStats, getTopBreaks } from "@/lib/reconciliation/stats";
 import { PeriodPicker } from "./period-picker";
+import { AskAiButton } from "./ask-ai-button";
 
 type TopBreak = Awaited<ReturnType<typeof getTopBreaks>>[number];
 
@@ -94,7 +95,7 @@ export default async function FinancialReconciliationPage({
         "This period has sub-ledger but not the GL yet. Upload the missing CSV to auto-match.";
     }
     return (
-      <JourneyPage {...JOURNEY_PROPS}>
+      <JourneyPage {...JOURNEY_PROPS} periodKey={active}>
         {header}
         <div className="p-10 text-center text-muted-foreground">
           <p className="mb-4">{message}</p>
@@ -108,7 +109,7 @@ export default async function FinancialReconciliationPage({
 
   if (stats.openBreakCount === 0) {
     return (
-      <JourneyPage {...JOURNEY_PROPS}>
+      <JourneyPage {...JOURNEY_PROPS} periodKey={active}>
         {header}
         <div className="grid grid-cols-4 gap-4 mb-8">
           <MetricCard value={`${(stats.matchRate * 100).toFixed(1)}%`} label="Match rate" />
@@ -135,7 +136,7 @@ export default async function FinancialReconciliationPage({
   }
 
   return (
-    <JourneyPage {...JOURNEY_PROPS}>
+    <JourneyPage {...JOURNEY_PROPS} periodKey={active}>
       {header}
       <div className="grid grid-cols-4 gap-4 mb-8">
         <MetricCard value={`${(stats.matchRate * 100).toFixed(1)}%`} label="Match rate" />
@@ -187,12 +188,7 @@ export default async function FinancialReconciliationPage({
                   </span>
                 </td>
                 <td className="px-4 py-2.5">
-                  <Link
-                    href={`/agent-console?q=${encodeURIComponent(`investigate break ${b.id}`)}&period=${active}`}
-                    className="text-xs underline"
-                  >
-                    Ask AI
-                  </Link>
+                  <AskAiButton breakId={b.id} periodKey={active} />
                 </td>
               </tr>
             ))}

@@ -7,16 +7,22 @@ import { useChatStream } from "@/hooks/use-chat-stream";
 import { ChatInput } from "@/components/agent-console/chat-input";
 import { NudgeChips } from "./nudge-chips";
 import { PipelineContainer } from "@/components/pipeline/pipeline-container";
+import {
+  JOURNEY_ASK_AI_EVENT,
+  type JourneyAskAiDetail,
+} from "./journey-chat-bridge";
 
 interface JourneyChatPanelProps {
   journeyId: string;
   nudges: string[];
+  periodKey?: string;
 }
 
-export function JourneyChatPanel({ journeyId, nudges }: JourneyChatPanelProps) {
+export function JourneyChatPanel({ journeyId, nudges, periodKey }: JourneyChatPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastPrefillRef = useRef<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -26,13 +32,41 @@ export function JourneyChatPanel({ journeyId, nudges }: JourneyChatPanelProps) {
 
   const { messages, pipelineSteps, isStreaming, sendMessage, stopStream } = useChatStream(userId);
 
+  // Refs to keep the event listener stable while accessing latest values.
+  const isStreamingRef = useRef(isStreaming);
+  const sendMessageRef = useRef(sendMessage);
+  const journeyIdRef = useRef(journeyId);
+  const periodKeyRef = useRef(periodKey);
+
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
+  useEffect(() => { journeyIdRef.current = journeyId; }, [journeyId]);
+  useEffect(() => { periodKeyRef.current = periodKey; }, [periodKey]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<JourneyAskAiDetail>).detail;
+      if (!detail?.message) return;
+      if (isStreamingRef.current) return;
+      if (lastPrefillRef.current === detail.message) return;
+      lastPrefillRef.current = detail.message;
+      setExpanded(true);
+      sendMessageRef.current(detail.message, {
+        journeyId: journeyIdRef.current,
+        periodKey: periodKeyRef.current,
+      });
+    };
+    window.addEventListener(JOURNEY_ASK_AI_EVENT, handler);
+    return () => window.removeEventListener(JOURNEY_ASK_AI_EVENT, handler);
+  }, []);
+
   const handleSend = (msg: string) => {
     if (!expanded) setExpanded(true);
-    sendMessage(msg, { journeyId });
+    sendMessage(msg, { journeyId, periodKey });
   };
 
   return (

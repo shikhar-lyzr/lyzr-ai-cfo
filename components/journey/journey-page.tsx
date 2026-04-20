@@ -8,9 +8,10 @@ interface JourneyPageProps {
   icon: LucideIcon;
   nudges: string[];
   children: React.ReactNode;
+  periodKey?: string;
 }
 
-export function JourneyPage({ id, title, description, icon: Icon, nudges, children }: JourneyPageProps) {
+export function JourneyPage({ id, title, description, icon: Icon, nudges, children, periodKey }: JourneyPageProps) {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] -mx-8 -mt-8 -mb-4">
       <div className="px-8 py-6 border-b border-border">
@@ -29,7 +30,7 @@ export function JourneyPage({ id, title, description, icon: Icon, nudges, childr
         {children}
       </div>
 
-      <JourneyChatPanel journeyId={id} nudges={nudges} />
+      <JourneyChatPanel journeyId={id} nudges={nudges} periodKey={periodKey} />
     </div>
   );
 }
