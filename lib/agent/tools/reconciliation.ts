@@ -7,7 +7,7 @@ import {
 } from "@/lib/reconciliation/persist";
 import { DEFAULT_STRATEGY_CONFIG } from "@/lib/reconciliation/types";
 
-export function createReconciliationTools(userId: string) {
+export function createReconciliationTools(userId: string, periodKey?: string) {
   const searchLedgerEntries = tool(
     "search_ledger_entries",
     "Query GL or sub-ledger entries by side, reference, account, counterparty, or status.",
@@ -86,7 +86,7 @@ export function createReconciliationTools(userId: string) {
     },
     async (args) => {
       const runs = await prisma.matchRun.findMany({
-        where: { userId },
+        where: { userId, ...(periodKey ? { periodKey } : {}) },
         orderBy: { startedAt: "desc" },
         take: Math.min(args.limit ?? 10, 25),
         select: {
@@ -120,7 +120,9 @@ export function createReconciliationTools(userId: string) {
       required: [],
     },
     async (args) => {
-      const where: Record<string, unknown> = { matchRun: { userId } };
+      const where: Record<string, unknown> = {
+        matchRun: { userId, ...(periodKey ? { periodKey } : {}) },
+      };
       if (args.side) where.side = args.side;
       if (args.ageBucket) where.ageBucket = args.ageBucket;
       if (args.severity) where.severity = args.severity;
@@ -155,7 +157,7 @@ export function createReconciliationTools(userId: string) {
     { type: "object", properties: {}, required: [] },
     async () => {
       const lastRun = await prisma.matchRun.findFirst({
-        where: { userId },
+        where: { userId, ...(periodKey ? { periodKey } : {}) },
         orderBy: { startedAt: "desc" },
       });
       if (!lastRun) {
@@ -219,8 +221,24 @@ export function createReconciliationTools(userId: string) {
       required: [],
     },
     async (args) => {
-      // TODO(task-8): make run_matching period-aware. For now, pick the most
-      // recent period with both GL and sub rows and run there.
+      // Honor periodKey when supplied (journey-scoped chat); otherwise fall
+      // back to the newest ReconPeriod that has data on both sides.
+      if (periodKey) {
+        const { gl, sub } = await loadLedgerEntries(userId, periodKey);
+        if (gl.length === 0 || sub.length === 0) {
+          const missing = gl.length === 0 && sub.length === 0
+            ? "GL and sub-ledger"
+            : gl.length === 0 ? "GL" : "sub-ledger";
+          return {
+            text: `Cannot run matching for period ${periodKey} — ${missing} data is missing. Upload the missing CSV(s) first.`,
+            details: { periodKey, glCount: gl.length, subCount: sub.length },
+          };
+        }
+        const config = { ...DEFAULT_STRATEGY_CONFIG, ...(args.strategyConfig ?? {}) };
+        const runId = await saveMatchRun(userId, periodKey, gl, sub, config, "agent");
+        return { text: `Match run ${runId} completed.`, details: { runId, periodKey } };
+      }
+
       const glCount = await prisma.gLEntry.count({
         where: { dataSource: { userId, status: "ready" } },
       });

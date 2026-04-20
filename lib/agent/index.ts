@@ -85,8 +85,8 @@ if (process.env.LYZR_API_KEY && !process.env.OPENAI_API_KEY) {
 // Note: the actual agent _id (69d43cce...) differs from the Studio URL slug.
 const MODEL = "lyzr:69d43ccef008dd037bad64d7@https://agent-prod.studio.lyzr.ai/v4";
 
-function buildTools(userId: string) {
-  const reconciliationTools = createReconciliationTools(userId);
+function buildTools(userId: string, periodKey?: string) {
+  const reconciliationTools = createReconciliationTools(userId, periodKey);
   return [...createFinancialTools(userId), ...Object.values(reconciliationTools)];
 }
 
@@ -102,7 +102,8 @@ function ensureApiKey(): void {
 export async function buildContext(
   userId: string,
   actionId?: string,
-  journeyId?: string
+  journeyId?: string,
+  periodKey?: string,
 ): Promise<string> {
   const [dataSources, pendingActions, recentMessages, actionEvents] = await Promise.all([
     prisma.dataSource.findMany({
@@ -132,7 +133,7 @@ export async function buildContext(
   const parts: string[] = [];
 
   // Journey context (prepended first so the journey header appears at top)
-  const journey = await buildJourneyContext(userId, journeyId);
+  const journey = await buildJourneyContext(userId, journeyId, periodKey);
   if (journey) parts.push(journey);
 
   // Data sources
@@ -239,12 +240,12 @@ export async function chatWithAgent(
   message: string,
   actionId: string | undefined,
   callbacks: AgentStreamCallbacks,
-  opts?: { journeyId?: string }
+  opts?: { journeyId?: string; periodKey?: string }
 ): Promise<void> {
   ensureApiKey();
 
-  const context = await buildContext(userId, actionId, opts?.journeyId);
-  const tools = buildTools(userId);
+  const context = await buildContext(userId, actionId, opts?.journeyId, opts?.periodKey);
+  const tools = buildTools(userId, opts?.periodKey);
 
   let result: Query;
   try {

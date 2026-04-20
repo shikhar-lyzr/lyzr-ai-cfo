@@ -11,7 +11,7 @@ function sseWrite(controller: ReadableStreamDefaultController, encoder: TextEnco
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { userId, message, actionId, journeyId } = body;
+  const { userId, message, actionId, journeyId, periodKey } = body;
 
   if (!userId || !message) {
     return new Response(
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
             sseWrite(controller, encoder, "error", { error: errorMsg });
             await finish(fullResponse || `Error: ${errorMsg}`);
           },
-        }, { journeyId });
+        }, { journeyId, periodKey });
       } else {
         // Fallback placeholder
         const recentActions = await prisma.action.findMany({
