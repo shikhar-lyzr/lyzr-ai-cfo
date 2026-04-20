@@ -53,14 +53,14 @@ export async function POST(request: NextRequest) {
     maybeAutoMatch(userId, periodsTouched)
       .then((runIds) => console.log("[upload] auto-match completed:", runIds.length > 0 ? runIds : "skipped"))
       .catch((err) => console.error("[upload] auto-match failed:", err));
-    return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length });
+    return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length, periodsTouched });
   }
   if (shape === "sub_ledger") {
     const { dataSource, skipped, periodsTouched } = await ingestSubLedger(userId, file.name, headers, rows);
     maybeAutoMatch(userId, periodsTouched)
       .then((runIds) => console.log("[upload] auto-match completed:", runIds.length > 0 ? runIds : "skipped"))
       .catch((err) => console.error("[upload] auto-match failed:", err));
-    return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length });
+    return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length, periodsTouched });
   }
 
   if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {
