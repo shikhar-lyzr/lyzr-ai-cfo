@@ -9,18 +9,18 @@ type Period = {
   matchRate: number | null;
 };
 
-export function PeriodPicker({ userId }: { userId: string }) {
+export function PeriodPicker() {
   const router = useRouter();
   const params = useSearchParams();
   const active = params.get("period");
   const [periods, setPeriods] = useState<Period[]>([]);
 
   useEffect(() => {
-    fetch(`/api/reconciliation/periods?userId=${userId}`)
+    fetch(`/api/reconciliation/periods`)
       .then((r) => r.json())
-      .then((data: Period[]) => setPeriods(data))
+      .then((data: Period[]) => setPeriods(Array.isArray(data) ? data : []))
       .catch(() => setPeriods([]));
-  }, [userId]);
+  }, []);
 
   if (periods.length === 0) return null;
 

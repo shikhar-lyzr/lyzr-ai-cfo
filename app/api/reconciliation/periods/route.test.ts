@@ -1,10 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
-import { GET } from "./route";
 
 const U = "test-user-periods-route";
+let sessionUserId: string | null = U;
+
+vi.mock("@/lib/auth", () => ({
+  getSession: async () =>
+    sessionUserId ? { userId: sessionUserId, email: `${sessionUserId}@x`, name: "T" } : null,
+}));
+
+const { GET } = await import("./route");
 
 beforeEach(async () => {
+  sessionUserId = U;
   await prisma.user.create({ data: { id: U, lyzrAccountId: U, email: `${U}@x`, name: "T" } });
   await prisma.reconPeriod.createMany({
     data: [
@@ -20,22 +28,21 @@ afterEach(async () => {
 });
 
 describe("GET /api/reconciliation/periods", () => {
-  it("returns periods newest-first", async () => {
-    const req = new Request(`http://x/api/reconciliation/periods?userId=${U}`);
-    const res = await GET(req as any);
+  it("returns periods newest-first for the authenticated user", async () => {
+    const res = await GET();
     const json = await res.json();
-    expect(json.map((p: any) => p.periodKey)).toEqual(["2026-04", "2026-03"]);
+    expect(json.map((p: { periodKey: string }) => p.periodKey)).toEqual(["2026-04", "2026-03"]);
   });
 
-  it("returns 400 when userId is missing", async () => {
-    const req = new Request(`http://x/api/reconciliation/periods`);
-    const res = await GET(req as any);
-    expect(res.status).toBe(400);
+  it("returns 401 when unauthenticated", async () => {
+    sessionUserId = null;
+    const res = await GET();
+    expect(res.status).toBe(401);
   });
 
-  it("returns [] for a user with no periods", async () => {
-    const req = new Request(`http://x/api/reconciliation/periods?userId=nonexistent-user-xyz`);
-    const res = await GET(req as any);
+  it("returns [] for an authenticated user with no periods", async () => {
+    sessionUserId = "other-user-with-no-periods";
+    const res = await GET();
     const json = await res.json();
     expect(json).toEqual([]);
   });

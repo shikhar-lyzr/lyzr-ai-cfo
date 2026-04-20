@@ -80,7 +80,7 @@ export default async function FinancialReconciliationPage({
       <Suspense
         fallback={<span className="text-xs text-muted-foreground">loading periods…</span>}
       >
-        <PeriodPicker userId={userId} />
+        <PeriodPicker />
       </Suspense>
     </div>
   );
