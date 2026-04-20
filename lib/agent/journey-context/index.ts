@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { buildReconciliationContext } from "./financial-reconciliation";
 
-export type JourneyContextBuilder = (userId: string) => Promise<string>;
+export type JourneyContextBuilder = (userId: string, periodKey: string) => Promise<string>;
 
 export const JOURNEY_TITLES: Record<string, string> = {
   "financial-reconciliation": "Financial Reconciliation",
@@ -12,20 +12,30 @@ export const JOURNEY_TITLES: Record<string, string> = {
   "regulatory-returns": "Regulatory Returns",
 };
 
+const BUILDERS: Record<string, JourneyContextBuilder> = {
+  "financial-reconciliation": buildReconciliationContext,
+};
+
 export async function buildJourneyContext(
   userId: string,
-  journeyId: string | undefined
+  journeyId: string | undefined,
+  periodKey?: string,
 ): Promise<string | null> {
   if (!journeyId) return null;
-  if (journeyId === "financial-reconciliation") {
-    // Temporary: resolve newest period. Task 10 will thread an explicit periodKey.
-    const newest = await prisma.reconPeriod.findFirst({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-    });
-    const periodKey = newest?.periodKey ?? "";
-    return buildReconciliationContext(userId, periodKey);
+
+  const builder = BUILDERS[journeyId];
+  if (builder) {
+    let resolvedPeriodKey = periodKey ?? "";
+    if (journeyId === "financial-reconciliation" && !resolvedPeriodKey) {
+      const newest = await prisma.reconPeriod.findFirst({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+      });
+      resolvedPeriodKey = newest?.periodKey ?? "";
+    }
+    return builder(userId, resolvedPeriodKey);
   }
+
   const title = JOURNEY_TITLES[journeyId] ?? journeyId;
   return `## Current Journey: ${title}\nThis is a demo placeholder page — no live backing data. Answer conceptually or redirect the user to journeys with real data (Financial Reconciliation).`;
 }

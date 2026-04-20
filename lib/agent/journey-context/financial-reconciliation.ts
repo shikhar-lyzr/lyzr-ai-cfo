@@ -1,16 +1,23 @@
 import { getReconciliationStats, getTopBreaks } from "@/lib/reconciliation/stats";
 
-export async function buildReconciliationContext(userId: string, periodKey: string): Promise<string> {
+export async function buildReconciliationContext(
+  userId: string,
+  periodKey: string,
+): Promise<string> {
   const stats = await getReconciliationStats(userId, periodKey);
 
   if (!stats.hasData) {
-    return `## Current Journey: Financial Reconciliation\nNo match run yet — user needs to upload a GL CSV and a sub-ledger CSV to kick off reconciliation.`;
+    return (
+      `## Current Journey: Financial Reconciliation — period ${periodKey}\n` +
+      `No match run yet for ${periodKey}. Ask the user to upload a GL CSV and a ` +
+      `sub-ledger CSV that contain ${periodKey} rows to kick off reconciliation.`
+    );
   }
 
   const ageText = humanizeAge(stats.lastRunAt);
 
   const header =
-    `## Current Journey: Financial Reconciliation\n` +
+    `## Current Journey: Financial Reconciliation — period ${periodKey}\n` +
     `Match rate: ${(stats.matchRate * 100).toFixed(1)}%   ` +
     `Open breaks: ${stats.openBreakCount} ($${stats.openBreakValue.toLocaleString()})   ` +
     `Oldest: ${stats.oldestBreakDays}d\n` +
