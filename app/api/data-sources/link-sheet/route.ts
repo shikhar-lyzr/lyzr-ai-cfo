@@ -5,6 +5,9 @@ import { parseCSV, autoDetectColumns, parseRows } from "@/lib/csv/variance-parse
 import { parseArCsv } from "@/lib/csv/ar-parser";
 import { detectCsvShape } from "@/lib/csv/detect-shape";
 import { analyzeUpload, analyzeArUpload } from "@/lib/agent";
+import { ingestGl, ingestSubLedger, ingestFxRates } from "@/lib/reconciliation/persist";
+
+const ALLOWED_SHAPES = new Set(["variance", "ar", "gl", "sub_ledger", "fx"]);
 
 function extractSheetId(url: string): string | null {
   const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -19,8 +22,12 @@ export async function POST(request: NextRequest) {
 
   const { url, shape } = (await request.json()) as {
     url: string;
-    shape: "variance" | "ar";
+    shape: "variance" | "ar" | "gl" | "sub_ledger" | "fx";
   };
+
+  if (shape && !ALLOWED_SHAPES.has(shape)) {
+    return NextResponse.json({ error: "Invalid shape" }, { status: 400 });
+  }
 
   const sheetId = extractSheetId(url);
   if (!sheetId) {
@@ -54,6 +61,58 @@ export async function POST(request: NextRequest) {
   // Verify shape matches what was claimed by the tab, or auto-detect
   const detectedShape = await detectCsvShape(headers);
   const effectiveShape = detectedShape !== "unknown" ? detectedShape : shape;
+
+  const sheetFileName = `Google Sheet (${sheetId.slice(0, 8)}...)`;
+
+  if (effectiveShape === "gl") {
+    const result = await ingestGl(session.userId, sheetFileName, headers, rows);
+    return NextResponse.json(
+      {
+        kind: "gl",
+        dataSource: {
+          id: result.dataSource.id,
+          name: result.dataSource.name,
+          recordCount: result.dataSource.recordCount,
+        },
+        periodsTouched: result.periodsTouched,
+        skipped: result.skipped.length,
+      },
+      { status: 201 }
+    );
+  }
+
+  if (effectiveShape === "sub_ledger") {
+    const result = await ingestSubLedger(session.userId, sheetFileName, headers, rows);
+    return NextResponse.json(
+      {
+        kind: "sub_ledger",
+        dataSource: {
+          id: result.dataSource.id,
+          name: result.dataSource.name,
+          recordCount: result.dataSource.recordCount,
+        },
+        periodsTouched: result.periodsTouched,
+        skipped: result.skipped.length,
+      },
+      { status: 201 }
+    );
+  }
+
+  if (effectiveShape === "fx") {
+    const result = await ingestFxRates(session.userId, sheetFileName, headers, rows);
+    return NextResponse.json(
+      {
+        kind: "fx",
+        dataSource: {
+          id: result.dataSource.id,
+          name: result.dataSource.name,
+          recordCount: result.dataSource.recordCount,
+        },
+        ratesLoaded: result.ratesLoaded,
+      },
+      { status: 201 }
+    );
+  }
 
   const dataSource = await prisma.dataSource.create({
     data: {
