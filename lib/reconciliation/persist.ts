@@ -230,24 +230,33 @@ export async function ingestFxRates(
 
   // Chunking to avoid exhausting the connection pool, but no interactive transaction
   // because that causes timeouts and "Transaction not found" errors on Neon.
-  const chunkSize = 50;
-  for (let i = 0; i < rates.length; i += chunkSize) {
-    const chunk = rates.slice(i, i + chunkSize);
-    await Promise.all(
-      chunk.map((r) =>
-        prisma.fXRate.upsert({
-          where: {
-            fromCurrency_toCurrency_asOf: {
-              fromCurrency: r.fromCurrency,
-              toCurrency: r.toCurrency,
-              asOf: r.asOf,
+  // Flip the DataSource to "error" if any chunk fails so it doesn't stay in "processing".
+  try {
+    const chunkSize = 50;
+    for (let i = 0; i < rates.length; i += chunkSize) {
+      const chunk = rates.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map((r) =>
+          prisma.fXRate.upsert({
+            where: {
+              fromCurrency_toCurrency_asOf: {
+                fromCurrency: r.fromCurrency,
+                toCurrency: r.toCurrency,
+                asOf: r.asOf,
+              },
             },
-          },
-          create: r,
-          update: { rate: r.rate },
-        })
-      )
-    );
+            create: r,
+            update: { rate: r.rate },
+          })
+        )
+      );
+    }
+  } catch (err) {
+    await prisma.dataSource.update({
+      where: { id: dataSource.id },
+      data: { status: "error" },
+    });
+    throw err;
   }
 
   const updated = await prisma.dataSource.update({
