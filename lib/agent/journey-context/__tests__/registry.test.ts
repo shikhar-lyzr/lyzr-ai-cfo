@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildJourneyContext, JOURNEY_TITLES } from "../index";
+import { prisma } from "@/lib/db";
+import * as stats from "@/lib/reconciliation/stats";
 
 describe("journey-context registry", () => {
   it("returns null when journeyId is undefined", async () => {
@@ -20,6 +22,26 @@ describe("journey-context registry", () => {
     const out = await buildJourneyContext("user-1", "fake-journey");
     expect(out).toContain("## Current Journey: fake-journey");
     expect(out).toContain("demo placeholder");
+  });
+
+  describe("financial-reconciliation newest-period fallback", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("resolves periodKey from newest ReconPeriod when none passed", async () => {
+      const findFirstSpy = vi
+        .spyOn(prisma.reconPeriod, "findFirst")
+        .mockResolvedValue({ periodKey: "2026-03" } as any);
+      vi.spyOn(stats, "getReconciliationStats").mockResolvedValue({ hasData: false } as any);
+      vi.spyOn(stats, "getTopBreaks").mockResolvedValue([] as any);
+
+      const out = await buildJourneyContext("user-1", "financial-reconciliation");
+
+      expect(findFirstSpy).toHaveBeenCalledWith({
+        where: { userId: "user-1" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(out).toContain("2026-03");
+    });
   });
 
   it("exports JOURNEY_TITLES for all six known journeys", () => {

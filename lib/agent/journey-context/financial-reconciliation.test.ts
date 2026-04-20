@@ -10,7 +10,7 @@ describe("buildReconciliationContext", () => {
     vi.spyOn(stats, "getTopBreaks").mockResolvedValue([]);
     const ctx = await buildReconciliationContext("u1", "2026-04");
     expect(ctx).toContain("2026-04");
-    expect(ctx.toLowerCase()).toMatch(/no data|waiting|upload/);
+    expect(ctx).toMatch(/no match run yet/i);
   });
 
   it("includes the period key in the header when data exists", async () => {
