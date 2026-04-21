@@ -65,9 +65,7 @@ export default async function FinancialReconciliationPage({
   }
 
   const active =
-    period && periods.some((p: { periodKey: string }) => p.periodKey === period)
-      ? period
-      : periods[0].periodKey;
+    period && periods.some((p) => p.periodKey === period) ? period : periods[0].periodKey;
 
   const [stats, glCount, subCount] = await Promise.all([
     getReconciliationStats(userId, active),
