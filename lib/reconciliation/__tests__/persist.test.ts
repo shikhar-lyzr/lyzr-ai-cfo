@@ -30,7 +30,7 @@ describe("persist layer", { timeout: 30_000 }, () => {
 
     await prisma.gLEntry.create({
       data: {
-        dataSourceId: glDsId,
+        dataSourceId: glDsId, periodKey: "2026-04",
         entryDate: new Date("2026-04-01"), postingDate: new Date("2026-04-01"),
         account: "2100", reference: "INV-001",
         amount: 100, txnCurrency: "USD", baseAmount: 100,
@@ -39,7 +39,7 @@ describe("persist layer", { timeout: 30_000 }, () => {
     });
     await prisma.subLedgerEntry.create({
       data: {
-        dataSourceId: subDsId, sourceModule: "AP",
+        dataSourceId: subDsId, sourceModule: "AP", periodKey: "2026-04",
         entryDate: new Date("2026-04-01"),
         account: "2100", reference: "INV-001",
         amount: 100, txnCurrency: "USD", baseAmount: 100, counterparty: "Acme",
@@ -47,7 +47,7 @@ describe("persist layer", { timeout: 30_000 }, () => {
     });
     await prisma.gLEntry.create({
       data: {
-        dataSourceId: glDsId,
+        dataSourceId: glDsId, periodKey: "2026-04",
         entryDate: new Date("2026-01-01"), postingDate: new Date("2026-01-01"),
         account: "2100", reference: "INV-OLD",
         amount: 20000, txnCurrency: "USD", baseAmount: 20000,
@@ -57,15 +57,17 @@ describe("persist layer", { timeout: 30_000 }, () => {
   });
 
   it("loadLedgerEntries returns inputs for matching", async () => {
-    const { gl, sub } = await loadLedgerEntries(userId);
+    const { gl, sub } = await loadLedgerEntries(userId, "2026-04");
     expect(gl).toHaveLength(2);
     expect(sub).toHaveLength(1);
-    expect(gl[0].baseAmount).toBe(100);
+    // loadLedgerEntries orders by entryDate asc → 2026-01-01 (20000) first, then 2026-04-01 (100).
+    expect(gl[0].baseAmount).toBe(20000);
+    expect(gl[1].baseAmount).toBe(100);
   });
 
   it("saveMatchRun persists run, links, breaks, and flips entry status", async () => {
-    const { gl, sub } = await loadLedgerEntries(userId);
-    const runId = await saveMatchRun(userId, gl, sub, DEFAULT_STRATEGY_CONFIG, "manual");
+    const { gl, sub } = await loadLedgerEntries(userId, "2026-04");
+    const runId = await saveMatchRun(userId, "2026-04", gl, sub, DEFAULT_STRATEGY_CONFIG, "manual");
 
     const run = await prisma.matchRun.findUnique({
       where: { id: runId },
@@ -76,7 +78,9 @@ describe("persist layer", { timeout: 30_000 }, () => {
     expect(run?.links).toHaveLength(1);
     expect(run?.breaks).toHaveLength(1);
 
-    const matchedGL = await prisma.gLEntry.findFirst({ where: { reference: "INV-001" } });
+    const matchedGL = await prisma.gLEntry.findFirst({
+      where: { reference: "INV-001", dataSourceId: glDsId },
+    });
     expect(matchedGL?.matchStatus).toBe("matched");
 
     const breakRow = run?.breaks[0];

@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/db";
 
-export async function getReconciliationStats(userId: string) {
+export async function getReconciliationStats(userId: string, periodKey: string) {
   const lastRun = await prisma.matchRun.findFirst({
-    where: { userId },
+    where: { userId, periodKey },
     orderBy: { startedAt: "desc" },
   });
   if (!lastRun) {
@@ -30,9 +30,9 @@ export async function getReconciliationStats(userId: string) {
   };
 }
 
-export async function getTopBreaks(userId: string, limit = 10) {
+export async function getTopBreaks(userId: string, periodKey: string, limit = 10) {
   const lastRun = await prisma.matchRun.findFirst({
-    where: { userId },
+    where: { userId, periodKey },
     orderBy: { startedAt: "desc" },
   });
   if (!lastRun) return [];

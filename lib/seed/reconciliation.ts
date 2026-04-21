@@ -15,16 +15,22 @@ export async function seedReconciliation(userId: string) {
   const samplesDir = join(process.cwd(), "public", "samples");
 
   const fx = parseCSV(readFileSync(join(samplesDir, "sample-fx-rates.csv"), "utf-8"));
-  await ingestFxRates(fx.headers, fx.rows);
+  await ingestFxRates(userId, "sample-fx-rates.csv", fx.headers, fx.rows);
 
   const gl = parseCSV(readFileSync(join(samplesDir, "sample-gl.csv"), "utf-8"));
-  await ingestGl(userId, "sample-gl.csv", gl.headers, gl.rows);
+  const glIngest = await ingestGl(userId, "sample-gl.csv", gl.headers, gl.rows);
 
   const sub = parseCSV(readFileSync(join(samplesDir, "sample-sub-ledger.csv"), "utf-8"));
-  await ingestSubLedger(userId, "sample-sub-ledger.csv", sub.headers, sub.rows);
+  const subIngest = await ingestSubLedger(userId, "sample-sub-ledger.csv", sub.headers, sub.rows);
 
   if (await userHasBothLedgers(userId)) {
-    const { gl: glE, sub: subE } = await loadLedgerEntries(userId);
-    await saveMatchRun(userId, glE, subE, DEFAULT_STRATEGY_CONFIG, "upload");
+    const periods = Array.from(
+      new Set([...glIngest.periodsTouched, ...subIngest.periodsTouched])
+    );
+    for (const periodKey of periods) {
+      const { gl: glE, sub: subE } = await loadLedgerEntries(userId, periodKey);
+      if (glE.length === 0 || subE.length === 0) continue;
+      await saveMatchRun(userId, periodKey, glE, subE, DEFAULT_STRATEGY_CONFIG, "upload");
+    }
   }
 }

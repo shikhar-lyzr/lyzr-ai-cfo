@@ -17,9 +17,12 @@ const statusConfig = {
   error: { icon: AlertCircle, label: "Error", className: "text-danger" },
 };
 
-const typeIcons = {
+const typeIcons: Record<string, typeof FileSpreadsheet> = {
   csv: FileSpreadsheet,
   sheets: Sheet,
+  gl: FileSpreadsheet,
+  sub_ledger: FileSpreadsheet,
+  fx: FileSpreadsheet,
 };
 
 export function SourceList({ sources, onReanalyze }: SourceListProps) {

@@ -4,6 +4,7 @@ import { ageDays, ageBucket, severity, severityRank } from "./ageing";
 import { parseGlCsv } from "@/lib/csv/gl-parser";
 import { parseSubLedgerCsv } from "@/lib/csv/sub-ledger-parser";
 import { parseFxRatesCsv } from "@/lib/csv/fx-rates-parser";
+import { periodKeyFromDate, upsertPeriod } from "./period";
 import type {
   GLEntryInput,
   SubLedgerEntryInput,
@@ -11,15 +12,20 @@ import type {
   FXRateInput,
 } from "./types";
 
-export async function loadLedgerEntries(userId: string): Promise<{
+export async function loadLedgerEntries(
+  userId: string,
+  periodKey: string
+): Promise<{
   gl: GLEntryInput[];
   sub: SubLedgerEntryInput[];
 }> {
   const gl = await prisma.gLEntry.findMany({
-    where: { dataSource: { userId, status: "ready" } },
+    where: { periodKey, dataSource: { userId, status: "ready" } },
+    orderBy: { entryDate: "asc" },
   });
   const sub = await prisma.subLedgerEntry.findMany({
-    where: { dataSource: { userId, status: "ready" } },
+    where: { periodKey, dataSource: { userId, status: "ready" } },
+    orderBy: { entryDate: "asc" },
   });
 
   return {
@@ -53,6 +59,7 @@ export async function loadLedgerEntries(userId: string): Promise<{
 
 export async function saveMatchRun(
   userId: string,
+  periodKey: string,
   gl: GLEntryInput[],
   sub: SubLedgerEntryInput[],
   config: StrategyConfig,
@@ -66,6 +73,7 @@ export async function saveMatchRun(
     const run = await tx.matchRun.create({
       data: {
         userId,
+        periodKey,
         triggeredBy,
         strategyConfig: config,
         totalGL: result.stats.totalGL,
@@ -202,31 +210,61 @@ export async function loadFxRates(): Promise<FXRateInput[]> {
   }));
 }
 
-export async function ingestFxRates(csvHeaders: string[], csvRows: string[][]) {
+export async function ingestFxRates(
+  userId: string,
+  fileName: string,
+  csvHeaders: string[],
+  csvRows: string[][]
+) {
   const rates = parseFxRatesCsv(csvHeaders, csvRows);
-  
-  // Chunking to avoid exhausting the connection pool, but no interactive transaction 
+
+  const dataSource = await prisma.dataSource.create({
+    data: {
+      userId,
+      type: "fx",
+      name: fileName,
+      status: "processing",
+      metadata: JSON.stringify({ headers: csvHeaders }),
+    },
+  });
+
+  // Chunking to avoid exhausting the connection pool, but no interactive transaction
   // because that causes timeouts and "Transaction not found" errors on Neon.
-  const chunkSize = 50;
-  for (let i = 0; i < rates.length; i += chunkSize) {
-    const chunk = rates.slice(i, i + chunkSize);
-    await Promise.all(
-      chunk.map((r) =>
-        prisma.fXRate.upsert({
-          where: {
-            fromCurrency_toCurrency_asOf: {
-              fromCurrency: r.fromCurrency,
-              toCurrency: r.toCurrency,
-              asOf: r.asOf,
+  // Flip the DataSource to "error" if any chunk fails so it doesn't stay in "processing".
+  try {
+    const chunkSize = 50;
+    for (let i = 0; i < rates.length; i += chunkSize) {
+      const chunk = rates.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map((r) =>
+          prisma.fXRate.upsert({
+            where: {
+              fromCurrency_toCurrency_asOf: {
+                fromCurrency: r.fromCurrency,
+                toCurrency: r.toCurrency,
+                asOf: r.asOf,
+              },
             },
-          },
-          create: r,
-          update: { rate: r.rate },
-        })
-      )
-    );
+            create: r,
+            update: { rate: r.rate },
+          })
+        )
+      );
+    }
+  } catch (err) {
+    await prisma.dataSource.update({
+      where: { id: dataSource.id },
+      data: { status: "error" },
+    });
+    throw err;
   }
-  return rates.length;
+
+  const updated = await prisma.dataSource.update({
+    where: { id: dataSource.id },
+    data: { status: "ready", recordCount: rates.length },
+  });
+
+  return { dataSource: updated, ratesLoaded: rates.length };
 }
 
 export async function ingestGl(
@@ -237,6 +275,12 @@ export async function ingestGl(
 ) {
   const rates = await loadFxRates();
   const { entries, skipped } = await parseGlCsv(headers, rows, rates);
+  const periodSet = new Set<string>();
+  const stamped = entries.map((e) => {
+    const periodKey = periodKeyFromDate(e.entryDate);
+    periodSet.add(periodKey);
+    return { ...e, periodKey };
+  });
   const { dataSource } = await prisma.$transaction(
     async (tx) => {
       const ds = await tx.dataSource.create({
@@ -245,20 +289,24 @@ export async function ingestGl(
           metadata: JSON.stringify({ headers }),
         },
       });
-      if (entries.length > 0) {
+      if (stamped.length > 0) {
         await tx.gLEntry.createMany({
-          data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
+          data: stamped.map((e) => ({ ...e, dataSourceId: ds.id })),
         });
       }
       await tx.dataSource.update({
         where: { id: ds.id },
-        data: { status: "ready", recordCount: entries.length },
+        data: { status: "ready", recordCount: stamped.length },
       });
       return { dataSource: ds, skipped };
     },
     { timeout: 30_000 }
   );
-  return { dataSource, skipped };
+  const periodsTouched = [...periodSet];
+  for (const pk of periodsTouched) {
+    await upsertPeriod(prisma, userId, pk);
+  }
+  return { dataSource, skipped, periodsTouched };
 }
 
 export async function ingestSubLedger(
@@ -269,6 +317,12 @@ export async function ingestSubLedger(
 ) {
   const rates = await loadFxRates();
   const { entries, skipped } = await parseSubLedgerCsv(headers, rows, rates);
+  const periodSet = new Set<string>();
+  const stamped = entries.map((e) => {
+    const periodKey = periodKeyFromDate(e.entryDate);
+    periodSet.add(periodKey);
+    return { ...e, periodKey };
+  });
   const { dataSource } = await prisma.$transaction(
     async (tx) => {
       const ds = await tx.dataSource.create({
@@ -277,20 +331,24 @@ export async function ingestSubLedger(
           metadata: JSON.stringify({ headers }),
         },
       });
-      if (entries.length > 0) {
+      if (stamped.length > 0) {
         await tx.subLedgerEntry.createMany({
-          data: entries.map((e) => ({ ...e, dataSourceId: ds.id })),
+          data: stamped.map((e) => ({ ...e, dataSourceId: ds.id })),
         });
       }
       await tx.dataSource.update({
         where: { id: ds.id },
-        data: { status: "ready", recordCount: entries.length },
+        data: { status: "ready", recordCount: stamped.length },
       });
       return { dataSource: ds, skipped };
     },
     { timeout: 30_000 }
   );
-  return { dataSource, skipped };
+  const periodsTouched = [...periodSet];
+  for (const pk of periodsTouched) {
+    await upsertPeriod(prisma, userId, pk);
+  }
+  return { dataSource, skipped, periodsTouched };
 }
 
 export async function userHasBothLedgers(userId: string): Promise<boolean> {

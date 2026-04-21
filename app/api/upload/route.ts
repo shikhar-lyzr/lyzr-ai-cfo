@@ -45,22 +45,22 @@ export async function POST(request: NextRequest) {
 
   // ── Reconciliation flows (GL/sub-ledger/FX) ────────────────────
   if (shape === "fx") {
-    const count = await ingestFxRates(headers, rows);
-    return NextResponse.json({ kind: "fx", ratesLoaded: count });
+    const { dataSource, ratesLoaded } = await ingestFxRates(userId, file.name, headers, rows);
+    return NextResponse.json({ kind: "fx", dataSource, ratesLoaded });
   }
   if (shape === "gl") {
-    const { dataSource, skipped } = await ingestGl(userId, file.name, headers, rows);
-    maybeAutoMatch(userId)
-      .then((runId) => console.log("[upload] auto-match completed:", runId ?? "skipped"))
+    const { dataSource, skipped, periodsTouched } = await ingestGl(userId, file.name, headers, rows);
+    maybeAutoMatch(userId, periodsTouched)
+      .then((runIds) => console.log("[upload] auto-match completed:", runIds.length > 0 ? runIds : "skipped"))
       .catch((err) => console.error("[upload] auto-match failed:", err));
-    return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length });
+    return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length, periodsTouched });
   }
   if (shape === "sub_ledger") {
-    const { dataSource, skipped } = await ingestSubLedger(userId, file.name, headers, rows);
-    maybeAutoMatch(userId)
-      .then((runId) => console.log("[upload] auto-match completed:", runId ?? "skipped"))
+    const { dataSource, skipped, periodsTouched } = await ingestSubLedger(userId, file.name, headers, rows);
+    maybeAutoMatch(userId, periodsTouched)
+      .then((runIds) => console.log("[upload] auto-match completed:", runIds.length > 0 ? runIds : "skipped"))
       .catch((err) => console.error("[upload] auto-match failed:", err));
-    return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length });
+    return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length, periodsTouched });
   }
 
   if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {
@@ -257,9 +257,19 @@ async function handleVarianceUpload(
   });
 }
 
-async function maybeAutoMatch(userId: string): Promise<string | undefined> {
+async function maybeAutoMatch(userId: string, periodsTouched: string[]): Promise<string[]> {
   const both = await userHasBothLedgers(userId);
-  if (!both) return undefined;
-  const { gl, sub } = await loadLedgerEntries(userId);
-  return saveMatchRun(userId, gl, sub, DEFAULT_STRATEGY_CONFIG, "upload");
+  if (!both) return [];
+  const runIds: string[] = [];
+  for (const periodKey of periodsTouched) {
+    try {
+      const { gl, sub } = await loadLedgerEntries(userId, periodKey);
+      if (gl.length === 0 || sub.length === 0) continue;
+      const runId = await saveMatchRun(userId, periodKey, gl, sub, DEFAULT_STRATEGY_CONFIG, "upload");
+      runIds.push(runId);
+    } catch (err) {
+      console.error(`[upload] auto-match failed for period ${periodKey}:`, err);
+    }
+  }
+  return runIds;
 }

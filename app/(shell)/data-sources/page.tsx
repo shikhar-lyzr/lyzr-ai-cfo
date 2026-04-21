@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { UploadArea } from "@/components/data-sources/upload-area";
@@ -11,6 +11,14 @@ import type { DataSource } from "@/lib/types";
 type TabShape = "variance" | "ar" | "reconciliation";
 
 export default function DataSourcesPage() {
+  return (
+    <Suspense fallback={null}>
+      <DataSourcesPageInner />
+    </Suspense>
+  );
+}
+
+function DataSourcesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [sources, setSources] = useState<DataSource[]>([]);
@@ -51,6 +59,9 @@ export default function DataSourcesPage() {
   }, [fetchSources]);
 
   const filteredSources = sources.filter((s) => {
+    if (activeTab === "reconciliation") {
+      return s.type === "gl" || s.type === "sub_ledger" || s.type === "fx";
+    }
     try {
       const meta = typeof s.metadata === "string" ? JSON.parse(s.metadata) : s.metadata;
       return meta?.shape === activeTab;
@@ -116,10 +127,11 @@ export default function DataSourcesPage() {
     setIsLinking(true);
     setUploadResult(null);
     try {
+      const shapeForApi = activeTab === "reconciliation" ? "gl" : activeTab;
       const res = await fetch("/api/data-sources/link-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, shape: activeTab }),
+        body: JSON.stringify({ url, shape: shapeForApi }),
       });
       if (res.ok) {
         setUploadResult("Sheet connected. AI is analyzing in the background...");
@@ -176,7 +188,7 @@ export default function DataSourcesPage() {
         </div>
 
         {/* Upload + Link areas */}
-        <div className={clsx("grid gap-4", activeTab !== "reconciliation" && "md:grid-cols-2")}>
+        <div className="grid gap-4 md:grid-cols-2">
           <UploadArea
             onUpload={handleUpload}
             isUploading={isUploading}
@@ -186,9 +198,11 @@ export default function DataSourcesPage() {
                 : undefined
             }
           />
-          {activeTab !== "reconciliation" && (
-            <LinkSheetArea shape={activeTab} onLink={handleLink} isLinking={isLinking} />
-          )}
+          <LinkSheetArea
+            shape={activeTab === "reconciliation" ? "gl" : activeTab}
+            onLink={handleLink}
+            isLinking={isLinking}
+          />
         </div>
 
         {uploadResult && (
