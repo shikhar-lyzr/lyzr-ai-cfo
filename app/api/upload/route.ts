@@ -50,17 +50,15 @@ export async function POST(request: NextRequest) {
   }
   if (shape === "gl") {
     const { dataSource, skipped, periodsTouched } = await ingestGl(userId, file.name, headers, rows);
-    maybeAutoMatch(userId, periodsTouched)
-      .then((runIds) => console.log("[upload] auto-match completed:", runIds.length > 0 ? runIds : "skipped"))
-      .catch((err) => console.error("[upload] auto-match failed:", err));
-    return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length, periodsTouched });
+    // Await auto-match: serverless runtimes (Netlify/Vercel) do not guarantee
+    // detached promises complete after the response returns.
+    const runIds = await runAutoMatchSafely(userId, periodsTouched);
+    return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length, periodsTouched, matchRunIds: runIds });
   }
   if (shape === "sub_ledger") {
     const { dataSource, skipped, periodsTouched } = await ingestSubLedger(userId, file.name, headers, rows);
-    maybeAutoMatch(userId, periodsTouched)
-      .then((runIds) => console.log("[upload] auto-match completed:", runIds.length > 0 ? runIds : "skipped"))
-      .catch((err) => console.error("[upload] auto-match failed:", err));
-    return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length, periodsTouched });
+    const runIds = await runAutoMatchSafely(userId, periodsTouched);
+    return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length, periodsTouched, matchRunIds: runIds });
   }
 
   if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {
@@ -257,7 +255,16 @@ async function handleVarianceUpload(
   });
 }
 
-async function maybeAutoMatch(userId: string, periodsTouched: string[]): Promise<string[]> {
+async function runAutoMatchSafely(userId: string, periodsTouched: string[]): Promise<string[]> {
+  try {
+    return await maybeAutoMatch(userId, periodsTouched);
+  } catch (err) {
+    console.error("[upload] auto-match failed:", err);
+    return [];
+  }
+}
+
+export async function maybeAutoMatch(userId: string, periodsTouched: string[]): Promise<string[]> {
   const both = await userHasBothLedgers(userId);
   if (!both) return [];
   const runIds: string[] = [];
