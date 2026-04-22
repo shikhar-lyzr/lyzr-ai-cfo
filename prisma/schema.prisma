@@ -136,6 +136,11 @@ model Document {
   user       User        @relation(fields: [userId], references: [id])
   dataSource DataSource? @relation(fields: [dataSourceId], references: [id])
 
+  // Covers exact-match lookups (userId + type + period) used by
+  // lib/close/tasks.ts. The /api/documents/generate post-generate lookup
+  // uses `orderBy: createdAt desc` which is NOT covered here — the index
+  // narrows the candidate rows, then a filesort picks the newest. Fine at
+  // current volume; revisit if this becomes a hot path.
   @@index([userId, type, period])
 }
 
