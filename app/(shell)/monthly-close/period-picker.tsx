@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-type Period = { periodKey: string; score: number | null; tier: string | null };
+type Period = { periodKey: string; source: "recon" | "records" | "both" };
 
 export function PeriodPicker() {
   const router = useRouter();
@@ -35,7 +35,6 @@ export function PeriodPicker() {
       {periods.map((p) => (
         <option key={p.periodKey} value={p.periodKey}>
           {p.periodKey}
-          {p.score !== null ? ` — ${p.score}% ${p.tier}` : ""}
         </option>
       ))}
     </select>

@@ -1,23 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { listClosePeriods } from "@/lib/close/period";
-import { getCloseReadiness } from "@/lib/close/stats";
+import { listClosePeriods, safely } from "@/lib/close/period";
 
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const periods = await listClosePeriods(session.userId);
-  const enriched = await Promise.all(
-    periods.map(async (p) => {
-      const r = await getCloseReadiness(session.userId, p.periodKey);
-      return {
-        periodKey: p.periodKey,
-        source: p.source,
-        score: r.hasData ? r.score : null,
-        tier: r.hasData ? r.tier : null,
-      };
-    })
-  );
-  return NextResponse.json({ periods: enriched });
+  // Keep this lightweight: the picker only needs periodKey + source. Per-period
+  // score/tier would mean N readiness computations (~3–4 Prisma round-trips
+  // each) every time the dropdown opens. Callers that need the score for a
+  // specific period hit /api/close/readiness?period=<key>.
+  const periods = await safely(() => listClosePeriods(session.userId), []);
+  return NextResponse.json({ periods });
 }
