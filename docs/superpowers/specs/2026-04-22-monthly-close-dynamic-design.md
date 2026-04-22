@@ -38,7 +38,14 @@ lib/close/period.ts                           — period key helpers
 lib/close/stats.ts                            — getCloseReadiness, getCloseBlockers
 lib/close/tasks.ts                            — deriveTaskCounts from Prisma rows
 lib/agent/index.ts                            — EXTENDED: close_package report type
+agent/skills/monthly-close/SKILL.md           — NEW: gitclaw skill defining the 6-pillar instructions
 ```
+
+### Agent architecture — one agent, many skills
+
+We keep the existing single-agent topology: one Lyzr-hosted agent acts as the LLM brain, gitclaw provides the runtime. Journey-specific behavior lives in `agent/skills/<journey>/SKILL.md` files, which `loadSkillContent` ([lib/agent/index.ts:39](lib/agent/index.ts#L39)) pre-loads into the system prompt. Adding monthly-close is therefore `+1 SKILL.md + new tools in buildTools`, not `+1 agent`.
+
+**When to split into sub-agents (future spec, not this one):** when the combined SKILL content plus tool descriptions pushes the system prompt past ~30k tokens, or when `buildTools` crosses ~20 tools. At that point migrate to gitclaw's `agents:` block with `delegation.mode: router` — same Lyzr endpoint, tool-scoped sub-agents per journey. Not needed now.
 
 ## Components
 
