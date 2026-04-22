@@ -34,6 +34,7 @@ model DataSource {
   status      String   @default("processing")
   recordCount Int      @default(0)
   metadata    String?
+  contentHash String?
   createdAt   DateTime @default(now())
 
   user             User              @relation(fields: [userId], references: [id])
@@ -43,6 +44,8 @@ model DataSource {
   documents        Document[]
   glEntries        GLEntry[]
   subLedgerEntries SubLedgerEntry[]
+
+  @@index([userId, contentHash])
 }
 
 model FinancialRecord {
@@ -54,7 +57,7 @@ model FinancialRecord {
   budget       Float
   category     String
 
-  dataSource DataSource @relation(fields: [dataSourceId], references: [id])
+  dataSource DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
 }
 
 model Action {
@@ -72,7 +75,7 @@ model Action {
   createdAt          DateTime @default(now())
 
   user         User         @relation(fields: [userId], references: [id])
-  dataSource   DataSource?  @relation(fields: [sourceDataSourceId], references: [id])
+  dataSource   DataSource?  @relation(fields: [sourceDataSourceId], references: [id], onDelete: SetNull)
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   chatMessages ChatMessage[]
   events       ActionEvent[]
@@ -116,7 +119,7 @@ model Invoice {
   snoozedUntil  DateTime?
   createdAt     DateTime  @default(now())
 
-  dataSource DataSource @relation(fields: [dataSourceId], references: [id])
+  dataSource DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   actions    Action[]
 
   @@unique([dataSourceId, invoiceNumber])
@@ -134,7 +137,7 @@ model Document {
   updatedAt    DateTime @updatedAt
 
   user       User        @relation(fields: [userId], references: [id])
-  dataSource DataSource? @relation(fields: [dataSourceId], references: [id])
+  dataSource DataSource? @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
 
   // Covers exact-match lookups (userId + type + period) used by
   // lib/close/tasks.ts. The /api/documents/generate post-generate lookup

@@ -75,15 +75,36 @@ function DataSourcesPageInner() {
     setIsUploading(true);
     setUploadResult(null);
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("userId", userId);
+    const postUpload = async (replaceId?: string) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("userId", userId);
+      if (replaceId) formData.append("replace", replaceId);
+      return fetch("/api/upload", { method: "POST", body: formData });
+    };
 
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      let res = await postUpload();
+
+      if (res.status === 409) {
+        const body = (await res.json().catch(() => ({}))) as {
+          duplicateOf?: { id: string; name: string; createdAt: string };
+        };
+        const dup = body.duplicateOf;
+        if (!dup) {
+          setUploadResult("Error: duplicate upload (no prior reference returned)");
+          return;
+        }
+        const when = new Date(dup.createdAt).toLocaleDateString();
+        const ok = window.confirm(
+          `This file looks identical to "${dup.name}" uploaded on ${when}. Replace it?`
+        );
+        if (!ok) {
+          setUploadResult("Upload cancelled.");
+          return;
+        }
+        res = await postUpload(dup.id);
+      }
 
       if (res.ok) {
         const result = await res.json();
@@ -113,7 +134,7 @@ function DataSourcesPageInner() {
         fetchSources();
         setTimeout(() => router.push(redirectPath), 1500);
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({ error: res.statusText }));
         setUploadResult(`Error: ${err.error}`);
       }
     } catch {

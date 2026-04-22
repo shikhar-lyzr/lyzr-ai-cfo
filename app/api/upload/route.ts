@@ -14,11 +14,13 @@ import {
   saveMatchRun,
   userHasBothLedgers,
 } from "@/lib/reconciliation/persist";
+import { hashCsvText, resolveUploadDedup } from "@/lib/upload/dedup";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   const userId = formData.get("userId") as string | null;
+  const replaceId = (formData.get("replace") as string | null) || null;
 
   if (!file || !userId) {
     return NextResponse.json({ error: "file and userId required" }, { status: 400 });
@@ -29,6 +31,18 @@ export async function POST(request: NextRequest) {
   }
 
   const text = await file.text();
+  const contentHash = hashCsvText(text);
+  const dedup = await resolveUploadDedup({ userId, contentHash, replaceId });
+  if (dedup.kind === "forbidden") {
+    return NextResponse.json({ error: "replace id not found" }, { status: 403 });
+  }
+  if (dedup.kind === "duplicate") {
+    return NextResponse.json(
+      { error: "duplicate", duplicateOf: dedup.duplicateOf },
+      { status: 409 }
+    );
+  }
+
   const { headers, rows } = parseCSV(text);
 
   // ── Shape detection ─────────────────────────────────────────────
@@ -45,18 +59,18 @@ export async function POST(request: NextRequest) {
 
   // ── Reconciliation flows (GL/sub-ledger/FX) ────────────────────
   if (shape === "fx") {
-    const { dataSource, ratesLoaded } = await ingestFxRates(userId, file.name, headers, rows);
+    const { dataSource, ratesLoaded } = await ingestFxRates(userId, file.name, headers, rows, contentHash);
     return NextResponse.json({ kind: "fx", dataSource, ratesLoaded });
   }
   if (shape === "gl") {
-    const { dataSource, skipped, periodsTouched } = await ingestGl(userId, file.name, headers, rows);
+    const { dataSource, skipped, periodsTouched } = await ingestGl(userId, file.name, headers, rows, contentHash);
     // Await auto-match: serverless runtimes (Netlify/Vercel) do not guarantee
     // detached promises complete after the response returns.
     const runIds = await runAutoMatchSafely(userId, periodsTouched);
     return NextResponse.json({ kind: "gl", dataSource, skipped: skipped.length, periodsTouched, matchRunIds: runIds });
   }
   if (shape === "sub_ledger") {
-    const { dataSource, skipped, periodsTouched } = await ingestSubLedger(userId, file.name, headers, rows);
+    const { dataSource, skipped, periodsTouched } = await ingestSubLedger(userId, file.name, headers, rows, contentHash);
     const runIds = await runAutoMatchSafely(userId, periodsTouched);
     return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length, periodsTouched, matchRunIds: runIds });
   }
@@ -70,18 +84,19 @@ export async function POST(request: NextRequest) {
 
   // ── AR flow ─────────────────────────────────────────────────────
   if (shape === "ar") {
-    return handleArUpload(userId, file.name, headers, rows);
+    return handleArUpload(userId, file.name, headers, rows, contentHash);
   }
 
   // ── Variance flow (existing) ────────────────────────────────────
-  return handleVarianceUpload(userId, file.name, headers, rows);
+  return handleVarianceUpload(userId, file.name, headers, rows, contentHash);
 }
 
 async function handleArUpload(
   userId: string,
   fileName: string,
   headers: string[],
-  rows: string[][]
+  rows: string[][],
+  contentHash: string
 ) {
   const parseResult = await parseArCsv(headers, rows);
 
@@ -102,6 +117,7 @@ async function handleArUpload(
       name: fileName,
       status: "processing",
       metadata: JSON.stringify({ headers, shape: "ar" }),
+      contentHash,
     },
   });
 
@@ -168,7 +184,8 @@ async function handleVarianceUpload(
   userId: string,
   fileName: string,
   headers: string[],
-  rows: string[][]
+  rows: string[][],
+  contentHash: string
 ) {
   let mapping = autoDetectColumns(headers);
   let mappingSource: "regex" | "llm" = "regex";
@@ -213,6 +230,7 @@ async function handleVarianceUpload(
       name: fileName,
       status: "processing",
       metadata: JSON.stringify({ headers, mapping, shape: "variance" }),
+      contentHash,
     },
   });
 

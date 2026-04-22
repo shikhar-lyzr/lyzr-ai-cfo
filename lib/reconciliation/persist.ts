@@ -214,7 +214,8 @@ export async function ingestFxRates(
   userId: string,
   fileName: string,
   csvHeaders: string[],
-  csvRows: string[][]
+  csvRows: string[][],
+  contentHash?: string
 ) {
   const rates = parseFxRatesCsv(csvHeaders, csvRows);
 
@@ -225,6 +226,7 @@ export async function ingestFxRates(
       name: fileName,
       status: "processing",
       metadata: JSON.stringify({ headers: csvHeaders }),
+      contentHash,
     },
   });
 
@@ -271,7 +273,8 @@ export async function ingestGl(
   userId: string,
   fileName: string,
   headers: string[],
-  rows: string[][]
+  rows: string[][],
+  contentHash?: string
 ) {
   const rates = await loadFxRates();
   const { entries, skipped } = await parseGlCsv(headers, rows, rates);
@@ -287,6 +290,7 @@ export async function ingestGl(
         data: {
           userId, type: "gl", name: fileName, status: "processing",
           metadata: JSON.stringify({ headers }),
+          contentHash,
         },
       });
       if (stamped.length > 0) {
@@ -313,7 +317,8 @@ export async function ingestSubLedger(
   userId: string,
   fileName: string,
   headers: string[],
-  rows: string[][]
+  rows: string[][],
+  contentHash?: string
 ) {
   const rates = await loadFxRates();
   const { entries, skipped } = await parseSubLedgerCsv(headers, rows, rates);
@@ -329,6 +334,7 @@ export async function ingestSubLedger(
         data: {
           userId, type: "sub_ledger", name: fileName, status: "processing",
           metadata: JSON.stringify({ headers }),
+          contentHash,
         },
       });
       if (stamped.length > 0) {
