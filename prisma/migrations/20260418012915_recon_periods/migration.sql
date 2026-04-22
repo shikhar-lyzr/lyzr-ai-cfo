@@ -1,15 +1,7 @@
--- =============================================================================
--- DESTRUCTIVE MIGRATION — PILOT / DEMO ENVIRONMENTS ONLY
--- =============================================================================
--- Truncates all reconciliation ledger + match tables so that newly-added
--- NOT NULL "periodKey" columns can be populated by re-ingesting CSVs.
--- DataSource rows are preserved; users re-upload GL/sub-ledger to repopulate.
---
--- DO NOT RUN against an environment whose reconciliation data must be retained.
--- Back up the listed tables first if there is any doubt.
--- =============================================================================
+-- Destructive cutover for reconciliation tables.
+-- DataSource rows are preserved; users re-upload GL/sub to repopulate.
 
-TRUNCATE TABLE "MatchLink", "Break", "MatchRun", "GLEntry", "SubLedgerEntry", "AdjustmentProposal", "JournalAdjustment" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "MatchLink", "Break", "MatchRun", "GLEntry", "SubLedgerEntry", "FXRate", "AdjustmentProposal", "JournalAdjustment" RESTART IDENTITY CASCADE;
 
 -- Add columns
 ALTER TABLE "GLEntry" ADD COLUMN "periodKey" TEXT NOT NULL;
