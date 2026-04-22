@@ -22,7 +22,7 @@ export function GeneratePackageButton({ period }: { period: string }) {
         throw new Error(j.error ?? `HTTP ${res.status}`);
       }
       const doc = await res.json();
-      router.push(`/documents/${doc.id}`);
+      router.push(`/documents?select=${doc.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {

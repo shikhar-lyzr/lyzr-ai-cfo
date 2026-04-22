@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus, ChevronDown } from "lucide-react";
 import { DocumentList } from "@/components/documents/document-list";
 import { DocumentViewer } from "@/components/documents/document-viewer";
+import { getInitialSelection } from "./initial-selection";
 
 interface DocListItem {
   id: string;
@@ -22,6 +24,15 @@ interface DocFull {
 }
 
 export default function DocumentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <DocumentsPageInner />
+    </Suspense>
+  );
+}
+
+function DocumentsPageInner() {
+  const searchParams = useSearchParams();
   const [documents, setDocuments] = useState<DocListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<DocFull | null>(null);
@@ -52,7 +63,7 @@ export default function DocumentsPage() {
     fetchDocuments();
   }, [fetchDocuments]);
 
-  const handleSelect = async (id: string) => {
+  const handleSelect = useCallback(async (id: string) => {
     setSelectedId(id);
     setIsLoadingDoc(true);
     try {
@@ -69,7 +80,17 @@ export default function DocumentsPage() {
     } finally {
       setIsLoadingDoc(false);
     }
-  };
+  }, []);
+
+  // Deep-link support: ?select=<id> pre-selects a document on mount. Fires
+  // when the param transitions into the URL, so router.push("/documents?select=X")
+  // from elsewhere (e.g., GeneratePackageButton) lands on the right doc.
+  useEffect(() => {
+    const id = getInitialSelection(searchParams);
+    if (id && id !== selectedId) {
+      void handleSelect(id);
+    }
+  }, [searchParams, selectedId, handleSelect]);
 
   const handleGenerate = async (type: "variance_report" | "ar_summary") => {
     setShowDropdown(false);
