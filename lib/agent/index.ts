@@ -468,7 +468,9 @@ Structure the report as: (1) Executive summary with score + tier, (2) Blockers w
 
     // Run the LLM inline (same streaming-collect pattern used below for the
     // agent-driven report types) and capture the markdown body ourselves, so
-    // we can persist it with the period column directly.
+    // we can persist it with the period column directly. maxTurns: 1 because
+    // the prompt pre-injects all readiness/blocker/task data as JSON — no
+    // tool calls needed.
     const closeResult = query({
       prompt,
       dir: AGENT_DIR,
@@ -483,6 +485,10 @@ Structure the report as: (1) Executive summary with score + tier, (2) Blockers w
       } else if (msg.type === "assistant" && !body && msg.content) {
         body = msg.content;
       }
+    }
+
+    if (!body.trim()) {
+      throw new Error("close_package generation returned empty body");
     }
 
     const title = `Close Package — ${period}`;
