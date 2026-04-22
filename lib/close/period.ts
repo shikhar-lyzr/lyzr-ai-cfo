@@ -15,8 +15,8 @@ export async function listClosePeriods(userId: string): Promise<ClosePeriod[]> {
   const [reconRows, recordRows] = await Promise.all([
     prisma.reconPeriod.findMany({
       where: { userId },
-      select: { periodKey: true, createdAt: true },
-      orderBy: [{ createdAt: "desc" }, { periodKey: "desc" }],
+      select: { periodKey: true },
+      orderBy: { periodKey: "desc" },
     }),
     prisma.financialRecord.findMany({
       where: { dataSource: { userId } },
