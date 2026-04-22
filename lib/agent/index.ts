@@ -445,12 +445,55 @@ Do not create actions for invoices in cooldown or snoozed.`;
  */
 export async function generateReport(
   userId: string,
-  type: "variance_report" | "ar_summary"
+  type: "variance_report" | "ar_summary" | "close_package",
+  period?: string
 ): Promise<string> {
   ensureApiKey();
 
-  const context = await buildContext(userId);
-  const tools = buildTools(userId);
+  if (type === "close_package") {
+    if (!period) throw new Error("close_package requires a period");
+    const [readiness, blockers, tasks] = await Promise.all([
+      (await import("@/lib/close/stats")).getCloseReadiness(userId, period),
+      (await import("@/lib/close/stats")).getCloseBlockers(userId, period),
+      (await import("@/lib/close/tasks")).deriveTaskCounts(userId, period),
+    ]);
+
+    const prompt = `Produce a monthly close package for period ${period}.
+
+Readiness: ${JSON.stringify(readiness)}
+Blockers: ${JSON.stringify(blockers)}
+Task progress: ${JSON.stringify(tasks)}
+
+Structure the report as: (1) Executive summary with score + tier, (2) Blockers with severity, (3) Task progress, (4) Recommended next actions. Cite numbers from the inputs; do not invent figures.`;
+
+    // Run the LLM inline (same streaming-collect pattern used below for the
+    // agent-driven report types) and capture the markdown body ourselves, so
+    // we can persist it with the period column directly.
+    const closeResult = query({
+      prompt,
+      dir: AGENT_DIR,
+      model: MODEL,
+      maxTurns: 1,
+      constraints: { temperature: 0.3 },
+    });
+    let body = "";
+    for await (const msg of closeResult) {
+      if (msg.type === "delta" && msg.deltaType === "text") {
+        body += msg.content;
+      } else if (msg.type === "assistant" && !body && msg.content) {
+        body = msg.content;
+      }
+    }
+
+    const title = `Close Package — ${period}`;
+    await prisma.document.create({
+      data: { userId, type, title, body, period },
+    });
+    return body;
+  }
+
+  const context = await buildContext(userId, undefined, undefined, period);
+  const tools = buildTools(userId, period);
 
   const prompt = type === "variance_report"
     ? `Generate a comprehensive Monthly Variance Report. Steps:

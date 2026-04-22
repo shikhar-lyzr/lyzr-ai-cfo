@@ -10,23 +10,27 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { type } = body as { type: string };
+  const { type, period } = body as { type: string; period?: string };
 
-  if (!type || !["variance_report", "ar_summary"].includes(type)) {
+  const allowed = ["variance_report", "ar_summary", "close_package"] as const;
+  if (!type || !(allowed as readonly string[]).includes(type)) {
     return NextResponse.json(
-      { error: "Invalid type. Must be: variance_report or ar_summary" },
+      { error: `Invalid type. Must be one of: ${allowed.join(", ")}` },
       { status: 400 }
     );
   }
 
   try {
-    await generateReport(session.userId, type as "variance_report" | "ar_summary");
+    await generateReport(
+      session.userId,
+      type as (typeof allowed)[number],
+      period ?? undefined
+    );
 
-    // Find the most recently created document of this type
     const doc = await prisma.document.findFirst({
-      where: { userId: session.userId, type },
+      where: { userId: session.userId, type, ...(period ? { period } : {}) },
       orderBy: { createdAt: "desc" },
-      select: { id: true, title: true, createdAt: true },
+      select: { id: true, title: true, createdAt: true, period: true },
     });
 
     if (!doc) {
