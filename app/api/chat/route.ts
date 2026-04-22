@@ -4,7 +4,6 @@ import { chatWithAgent } from "@/lib/agent";
 import { resetStepCounter } from "@/lib/agent/classify-event";
 import { JOURNEY_TITLES } from "@/lib/agent/journey-context";
 import type { PipelineStep } from "@/lib/agent/pipeline-types";
-import { isValidPeriodKey } from "@/lib/reconciliation/period";
 
 function sseWrite(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: string, data: unknown) {
   controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
@@ -21,7 +20,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (periodKey !== undefined && (typeof periodKey !== "string" || !isValidPeriodKey(periodKey))) {
+  // Light sanity check. The periodKey is interpolated into the system prompt
+  // (not SQL), so shape validation here only serves to reject obvious junk.
+  // Any DB writes keyed by periodKey happen elsewhere and enforce their own
+  // format. Callers include the monthly-close page, which unions recon
+  // periods (YYYY-MM) with FinancialRecord.period values (YYYY, YYYY-Qn, …),
+  // so accept any short non-empty string.
+  if (periodKey !== undefined && (typeof periodKey !== "string" || periodKey.length === 0 || periodKey.length > 32)) {
     return new Response(
       JSON.stringify({ error: "invalid periodKey" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
