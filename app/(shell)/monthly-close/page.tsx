@@ -131,13 +131,16 @@ export default async function MonthlyClosePage({
                 );
               }
               return (
-                <li key={`var-${b.category}-${i}`} className="flex items-center justify-between">
+                <li
+                  key={`var-${b.category}-${b.account}-${i}`}
+                  className="flex items-center justify-between"
+                >
                   <span>
-                    {b.category}: actual {(b.pct * 100).toFixed(0)}%{" "}
+                    {b.account}: actual {(b.pct * 100).toFixed(0)}%{" "}
                     {b.pct >= 0 ? "above" : "below"} budget
                   </span>
                   <ExplainButton
-                    prompt={`Why did ${b.category} actual deviate ${(b.pct * 100).toFixed(
+                    prompt={`Why did ${b.account} (${b.category}) deviate ${(b.pct * 100).toFixed(
                       0
                     )}% from budget in ${active}?`}
                   />

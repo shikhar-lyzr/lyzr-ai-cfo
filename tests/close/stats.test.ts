@@ -180,6 +180,70 @@ describe("getCloseBlockers", () => {
     );
   });
 
+  it("surfaces one variance row per (category, account) pair, not per record", async () => {
+    mocked.matchRun.findFirst.mockResolvedValue(null);
+    mocked.break.findMany.mockResolvedValue([]);
+    mocked.gLEntry.findMany.mockResolvedValue([]);
+    mocked.subLedgerEntry.findMany.mockResolvedValue([]);
+    mocked.dataSource.findMany.mockResolvedValue([
+      { type: "gl" },
+      { type: "subledger" },
+      { type: "variance" },
+    ]);
+    // Same (Marketing, Digital Ads) appears in two DataSources (user uploaded
+    // the same CSV twice). Plus two other Marketing accounts, only one of
+    // which is over threshold. Plus a clean account. Expected: 2 blockers
+    // (Digital Ads, Contractors) — NOT 4 (no duplicates) and NOT 1 aggregate.
+    mocked.financialRecord.findMany.mockResolvedValue([
+      { category: "Marketing", account: "Marketing - Digital Ads", actual: 19800, budget: 15100 },
+      { category: "Marketing", account: "Marketing - Digital Ads", actual: 19800, budget: 15100 },
+      { category: "Marketing", account: "Marketing - Contractors", actual: 12400, budget: 10400 },
+      { category: "Marketing", account: "Marketing - Events", actual: 8200, budget: 8000 },
+    ]);
+
+    const blockers = await getCloseBlockers("u1", "2026-Q1");
+    const variances = blockers.filter((b) => b.kind === "variance");
+    expect(variances).toHaveLength(2);
+    const keys = variances
+      .map((b) => b.kind === "variance" ? `${b.category}|${b.account}` : "")
+      .sort();
+    expect(keys).toEqual([
+      "Marketing|Marketing - Contractors",
+      "Marketing|Marketing - Digital Ads",
+    ]);
+  });
+
+  it("aggregates monthly rows for the same (category, account) into one blocker", async () => {
+    mocked.matchRun.findFirst.mockResolvedValue(null);
+    mocked.break.findMany.mockResolvedValue([]);
+    mocked.gLEntry.findMany.mockResolvedValue([]);
+    mocked.subLedgerEntry.findMany.mockResolvedValue([]);
+    mocked.dataSource.findMany.mockResolvedValue([
+      { type: "gl" },
+      { type: "subledger" },
+      { type: "variance" },
+    ]);
+    // Quarter-level period with three monthly rows (Jan/Feb/Mar) for one
+    // (category, account). Each month differs — dedup must NOT collapse them.
+    mocked.financialRecord.findMany.mockResolvedValue([
+      { category: "OpEx", account: "Legal", actual: 700, budget: 500 },
+      { category: "OpEx", account: "Legal", actual: 650, budget: 500 },
+      { category: "OpEx", account: "Legal", actual: 750, budget: 500 },
+    ]);
+
+    const blockers = await getCloseBlockers("u1", "2026-Q1");
+    const variances = blockers.filter((b) => b.kind === "variance");
+    expect(variances).toHaveLength(1);
+    if (variances[0].kind === "variance") {
+      expect(variances[0].category).toBe("OpEx");
+      expect(variances[0].account).toBe("Legal");
+      // Summed (3 months), pct = (2100-1500)/1500 = 40%
+      expect(variances[0].actual).toBe(2100);
+      expect(variances[0].budget).toBe(1500);
+      expect(variances[0].pct).toBeCloseTo(0.4, 5);
+    }
+  });
+
   it("falls back to '(missing)' when the referenced entry was deleted", async () => {
     mocked.matchRun.findFirst.mockResolvedValue({ id: "r1" });
     mocked.break.findMany.mockResolvedValue([
