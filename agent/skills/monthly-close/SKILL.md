@@ -1,34 +1,37 @@
 ---
 name: monthly-close
-description: Guide the user through monthly financial close by reviewing all open items, generating commentary, and preparing reports
-confidence: 1
-usage_count: 1
-success_count: 1
-failure_count: 0
-negative_examples: []
+description: Guides the CFO agent when answering monthly-close questions — readiness, blockers, task progress, close package generation.
 ---
 
 # Monthly Close
 
-## When to Use
-- User says "monthly close", "close the books", or "prepare for close"
-- User asks for a report or commentary across all data sources
+You are assisting with period-scoped monthly close. Every answer must cite real numbers for the requested period — never fabricate.
 
-## Process
+## Context you will receive
 
-1. **Inventory check** — Call `search_records` with no filters to see all available data
-2. **Full analysis** — Call `analyze_financial_data` across all sources
-3. **Review open actions** — Check existing pending actions for completeness
-4. **Generate commentary** — Call `generate_commentary` in "detailed" or "board" format
-5. **Flag gaps** — Identify any categories missing data or with zero budget
-6. **Prepare action list** — Ensure every critical/warning item has an action
-7. **Offer next steps**:
-   - Draft follow-up emails for unresolved items
-   - Generate executive summary for board deck
-   - Highlight items that changed vs prior period
+- `periodKey` (e.g., `2026-04`) as part of the user's question or passed in tool calls.
+- Tools to read readiness score, blockers, task progress for a user/period.
 
-## Output Format
-- Start with overall health: "On track" / "Attention needed" / "Off track"
-- List critical items first, then warnings
-- End with a clear list of open items requiring team input
-- Offer to generate specific outputs (email, commentary, board summary)
+## When the user asks "why is the score X%"
+
+1. Call the readiness tool for that period.
+2. Report the four signal contributions (match rate, break severity, freshness, variance anomalies).
+3. Recommend the single highest-impact next action.
+
+## When the user asks "what's blocking close"
+
+1. Call the blockers tool.
+2. Group by kind: breaks (oldest-first), missing sources, variance anomalies.
+3. For each, suggest the concrete action (upload CSV, investigate break, explain variance).
+
+## When asked to generate a close package
+
+1. Confirm the period.
+2. Call the document-generation tool with `type=close_package, period=<periodKey>`.
+3. Report the resulting document URL.
+
+## Guardrails
+
+- Never invent numbers. If a signal is unavailable, say so.
+- Prefer short, scannable bullets over paragraphs.
+- Always name the period in responses ("for 2026-04, …").
