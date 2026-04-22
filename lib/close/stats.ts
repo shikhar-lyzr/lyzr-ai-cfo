@@ -72,11 +72,21 @@ export async function getCloseReadiness(userId: string, periodKey: string): Prom
   const missing = REQUIRED_SOURCE_TYPES.filter((t) => !haveTypes.has(t)).length;
   const freshnessPenalty = missing / REQUIRED_SOURCE_TYPES.length;
 
-  // 4) Variance anomalies — 20%. |actual-budget|/budget > VARIANCE_THRESHOLD.
-  let anomalies = 0;
+  // 4) Variance anomalies — 20%. Aggregate by category first (a period can
+  // have one row per month), then count unique categories whose combined
+  // actual deviates beyond VARIANCE_THRESHOLD.
+  const varianceByCategory = new Map<string, { actual: number; budget: number }>();
   for (const r of records) {
-    if (r.budget === 0) continue;
-    if (Math.abs(r.actual - r.budget) / Math.abs(r.budget) > VARIANCE_THRESHOLD) anomalies++;
+    const prev = varianceByCategory.get(r.category) ?? { actual: 0, budget: 0 };
+    varianceByCategory.set(r.category, {
+      actual: prev.actual + r.actual,
+      budget: prev.budget + r.budget,
+    });
+  }
+  let anomalies = 0;
+  for (const { actual, budget } of varianceByCategory.values()) {
+    if (budget === 0) continue;
+    if (Math.abs(actual - budget) / Math.abs(budget) > VARIANCE_THRESHOLD) anomalies++;
   }
   const variancePenalty = Math.min(anomalies / 5, 1);
 
@@ -173,17 +183,19 @@ export async function getCloseBlockers(userId: string, periodKey: string): Promi
     if (!haveTypes.has(t)) blockers.push({ kind: "missing_source", sourceType: t });
   }
 
+  // Aggregate records by category before checking the threshold. A period like
+  // "2026-Q1" can have three rows (Jan, Feb, Mar) per category — without this
+  // the same category surfaces up to three times as a blocker.
+  const byCategory = new Map<string, { actual: number; budget: number }>();
   for (const r of records) {
-    if (r.budget === 0) continue;
-    const pct = (r.actual - r.budget) / Math.abs(r.budget);
+    const prev = byCategory.get(r.category) ?? { actual: 0, budget: 0 };
+    byCategory.set(r.category, { actual: prev.actual + r.actual, budget: prev.budget + r.budget });
+  }
+  for (const [category, { actual, budget }] of byCategory) {
+    if (budget === 0) continue;
+    const pct = (actual - budget) / Math.abs(budget);
     if (Math.abs(pct) > VARIANCE_THRESHOLD) {
-      blockers.push({
-        kind: "variance",
-        category: r.category,
-        actual: r.actual,
-        budget: r.budget,
-        pct,
-      });
+      blockers.push({ kind: "variance", category, actual, budget, pct });
     }
   }
 
