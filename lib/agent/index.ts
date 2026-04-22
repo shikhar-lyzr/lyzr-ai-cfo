@@ -11,10 +11,13 @@ import { buildJourneyContext } from "./journey-context";
 
 function resolveAgentDir(): string {
   const source = join(process.cwd(), "agent");
-  // On AWS Lambda / Netlify Functions, /var/task is read-only but gitclaw
-  // needs to write .gitagent/ state inside the agent dir. Stage a writable
-  // copy under /tmp once per cold start.
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  // On serverless runtimes (AWS Lambda, Netlify Functions, Vercel) the
+  // function bundle at /var/task is read-only but gitclaw needs to write
+  // .gitagent/ state inside the agent dir. Stage a writable copy under
+  // /tmp once per cold start.
+  const isServerless =
+    !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.VERCEL || !!process.env.NETLIFY;
+  if (isServerless) {
     const writable = join(tmpdir(), "agent");
     if (!existsSync(writable)) {
       cpSync(source, writable, { recursive: true });
