@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    matchRun: { findFirst: vi.fn() },
+    matchRun: { findFirst: vi.fn(), findMany: vi.fn() },
     break: { findMany: vi.fn() },
     dataSource: { findMany: vi.fn() },
     financialRecord: { findMany: vi.fn() },
@@ -15,7 +15,7 @@ import { prisma } from "@/lib/db";
 import { getCloseReadiness, getCloseBlockers, scoreToTier } from "@/lib/close/stats";
 
 const mocked = prisma as unknown as {
-  matchRun: { findFirst: ReturnType<typeof vi.fn> };
+  matchRun: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
   break: { findMany: ReturnType<typeof vi.fn> };
   dataSource: { findMany: ReturnType<typeof vi.fn> };
   financialRecord: { findMany: ReturnType<typeof vi.fn> };
@@ -36,27 +36,48 @@ describe("scoreToTier", () => {
 describe("getCloseReadiness", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: no match runs. Tests that need runs override this.
+    mocked.matchRun.findMany.mockResolvedValue([]);
   });
 
   it("returns hasData=false when no signals exist", async () => {
-    mocked.matchRun.findFirst.mockResolvedValue(null);
     mocked.dataSource.findMany.mockResolvedValue([]);
     mocked.financialRecord.findMany.mockResolvedValue([]);
     const res = await getCloseReadiness("u1", "2026-04");
     expect(res.hasData).toBe(false);
   });
 
+  it("freshnessPenalty is 0 when user has gl + sub_ledger + variance sources (prod type names)", async () => {
+    mocked.matchRun.findMany.mockResolvedValue([
+      { id: "r1", periodKey: "2026-04", matched: 50, totalGL: 50, totalSub: 50, startedAt: new Date() },
+    ]);
+    mocked.break.findMany.mockResolvedValue([]);
+    // Real DataSource.type values as written by ingestGl/ingestSubLedger and
+    // the variance CSV flow. Historical bug: REQUIRED_SOURCE_TYPES was
+    // spelled "subledger" (no underscore) so this mapping never matched and
+    // freshness penalty was stuck at 0.667 even when all three sources were
+    // present.
+    mocked.dataSource.findMany.mockResolvedValue([
+      { type: "gl" },
+      { type: "sub_ledger" },
+      { type: "variance" },
+    ]);
+    mocked.financialRecord.findMany.mockResolvedValue([]);
+    const res = await getCloseReadiness("u1", "2026-04");
+    expect(res.hasData).toBe(true);
+    if (res.hasData) {
+      expect(res.signals.freshnessPenalty).toBe(0);
+    }
+  });
+
   it("all-green scenario scores 100", async () => {
-    mocked.matchRun.findFirst.mockResolvedValue({
-      id: "r1",
-      matched: 50,
-      totalGL: 50,
-      totalSub: 50,
-    });
+    mocked.matchRun.findMany.mockResolvedValue([
+      { id: "r1", periodKey: "2026-04", matched: 50, totalGL: 50, totalSub: 50, startedAt: new Date() },
+    ]);
     mocked.break.findMany.mockResolvedValue([]);
     mocked.dataSource.findMany.mockResolvedValue([
       { type: "gl" },
-      { type: "subledger" },
+      { type: "sub_ledger" },
       { type: "variance" },
     ]);
     mocked.financialRecord.findMany.mockResolvedValue([
@@ -71,12 +92,9 @@ describe("getCloseReadiness", () => {
   });
 
   it("80% match + 2 old breaks + missing subledger + 1 anomaly → Caution tier", async () => {
-    mocked.matchRun.findFirst.mockResolvedValue({
-      id: "r1",
-      matched: 40,
-      totalGL: 50,
-      totalSub: 50,
-    });
+    mocked.matchRun.findMany.mockResolvedValue([
+      { id: "r1", periodKey: "2026-04", matched: 40, totalGL: 50, totalSub: 50, startedAt: new Date() },
+    ]);
     mocked.break.findMany.mockResolvedValue([
       { severity: "high", ageDays: 20 },
       { severity: "medium", ageDays: 8 },
@@ -95,15 +113,68 @@ describe("getCloseReadiness", () => {
       expect(res.narrative).toMatch(/Caution|caution/);
     }
   });
+
+  it("aggregates MatchRuns across monthly keys when periodKey is quarterly", async () => {
+    // Recon engine creates one MatchRun per month. A user viewing 2026-Q1
+    // should see the combined Jan+Feb+Mar rate, not zero.
+    mocked.matchRun.findMany.mockResolvedValue([
+      { id: "r-jan", periodKey: "2026-01", matched: 6, totalGL: 6, totalSub: 6, startedAt: new Date("2026-02-01") },
+      { id: "r-feb", periodKey: "2026-02", matched: 158, totalGL: 158, totalSub: 158, startedAt: new Date("2026-03-01") },
+      { id: "r-mar", periodKey: "2026-03", matched: 163, totalGL: 163, totalSub: 166, startedAt: new Date("2026-04-01") },
+    ]);
+    mocked.break.findMany.mockResolvedValue([]);
+    mocked.dataSource.findMany.mockResolvedValue([
+      { type: "gl" },
+      { type: "sub_ledger" },
+      { type: "variance" },
+    ]);
+    mocked.financialRecord.findMany.mockResolvedValue([]);
+
+    const res = await getCloseReadiness("u1", "2026-Q1");
+    expect(res.hasData).toBe(true);
+    if (res.hasData) {
+      // (6+158+163) * 2 / (6+6 + 158+158 + 163+166) = 654 / 657 ≈ 0.995
+      expect(res.signals.matchRate).toBeCloseTo(0.995, 2);
+      expect(res.score).toBeGreaterThan(90);
+    }
+  });
+
+  it("unions breaks across monthly MatchRuns in the quarter", async () => {
+    mocked.matchRun.findMany.mockResolvedValue([
+      { id: "r-jan", periodKey: "2026-01", matched: 10, totalGL: 10, totalSub: 10, startedAt: new Date() },
+      { id: "r-feb", periodKey: "2026-02", matched: 10, totalGL: 10, totalSub: 12, startedAt: new Date() },
+    ]);
+    mocked.break.findMany.mockResolvedValue([
+      { severity: "high", ageDays: 10 },
+      { severity: "medium", ageDays: 5 },
+    ]);
+    mocked.dataSource.findMany.mockResolvedValue([
+      { type: "gl" }, { type: "sub_ledger" }, { type: "variance" },
+    ]);
+    mocked.financialRecord.findMany.mockResolvedValue([]);
+
+    await getCloseReadiness("u1", "2026-Q1");
+
+    // break.findMany should look up breaks across BOTH matchRunIds
+    expect(mocked.break.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          matchRunId: { in: ["r-jan", "r-feb"] },
+          status: "open",
+        }),
+      })
+    );
+  });
 });
 
 describe("getCloseBlockers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocked.matchRun.findMany.mockResolvedValue([]);
   });
 
   it("emits break, missing_source, and variance blockers in that order", async () => {
-    mocked.matchRun.findFirst.mockResolvedValue({ id: "r1" });
+    mocked.matchRun.findMany.mockResolvedValue([{ id: "r1", periodKey: "2026-04", startedAt: new Date() }]);
     mocked.break.findMany.mockResolvedValue([
       {
         id: "b1",
@@ -134,7 +205,7 @@ describe("getCloseBlockers", () => {
   });
 
   it("looks up GLEntry.reference when side='gl_only' and SubLedgerEntry.reference when side='sub_only'", async () => {
-    mocked.matchRun.findFirst.mockResolvedValue({ id: "r1" });
+    mocked.matchRun.findMany.mockResolvedValue([{ id: "r1", periodKey: "2026-04", startedAt: new Date() }]);
     mocked.break.findMany.mockResolvedValue([
       {
         id: "b-gl",
@@ -157,7 +228,7 @@ describe("getCloseBlockers", () => {
     mocked.subLedgerEntry.findMany.mockResolvedValue([{ id: "sub-1", reference: "SUB-REF" }]);
     mocked.dataSource.findMany.mockResolvedValue([
       { type: "gl" },
-      { type: "subledger" },
+      { type: "sub_ledger" },
       { type: "variance" },
     ]);
     mocked.financialRecord.findMany.mockResolvedValue([]);
@@ -187,7 +258,7 @@ describe("getCloseBlockers", () => {
     mocked.subLedgerEntry.findMany.mockResolvedValue([]);
     mocked.dataSource.findMany.mockResolvedValue([
       { type: "gl" },
-      { type: "subledger" },
+      { type: "sub_ledger" },
       { type: "variance" },
     ]);
     // Same (Marketing, Digital Ads) appears in two DataSources (user uploaded
@@ -220,7 +291,7 @@ describe("getCloseBlockers", () => {
     mocked.subLedgerEntry.findMany.mockResolvedValue([]);
     mocked.dataSource.findMany.mockResolvedValue([
       { type: "gl" },
-      { type: "subledger" },
+      { type: "sub_ledger" },
       { type: "variance" },
     ]);
     // Quarter-level period with three monthly rows (Jan/Feb/Mar) for one
@@ -245,7 +316,7 @@ describe("getCloseBlockers", () => {
   });
 
   it("falls back to '(missing)' when the referenced entry was deleted", async () => {
-    mocked.matchRun.findFirst.mockResolvedValue({ id: "r1" });
+    mocked.matchRun.findMany.mockResolvedValue([{ id: "r1", periodKey: "2026-04", startedAt: new Date() }]);
     mocked.break.findMany.mockResolvedValue([
       {
         id: "b1",
@@ -260,7 +331,7 @@ describe("getCloseBlockers", () => {
     mocked.subLedgerEntry.findMany.mockResolvedValue([]);
     mocked.dataSource.findMany.mockResolvedValue([
       { type: "gl" },
-      { type: "subledger" },
+      { type: "sub_ledger" },
       { type: "variance" },
     ]);
     mocked.financialRecord.findMany.mockResolvedValue([]);
@@ -271,5 +342,35 @@ describe("getCloseBlockers", () => {
     if (breakBlocker && breakBlocker.kind === "break") {
       expect(breakBlocker.ref).toBe("(missing)");
     }
+  });
+
+  it("unions breaks across all MatchRuns in the quarter", async () => {
+    mocked.matchRun.findMany.mockResolvedValue([
+      { id: "r-jan", periodKey: "2026-01", startedAt: new Date() },
+      { id: "r-feb", periodKey: "2026-02", startedAt: new Date() },
+      { id: "r-mar", periodKey: "2026-03", startedAt: new Date() },
+    ]);
+    mocked.break.findMany.mockResolvedValue([
+      { id: "b-jan", side: "gl_only", entryId: "gl-1", baseAmount: 100, ageDays: 20, severity: "high" },
+      { id: "b-mar", side: "sub_only", entryId: "sub-1", baseAmount: 200, ageDays: 5, severity: "medium" },
+    ]);
+    mocked.gLEntry.findMany.mockResolvedValue([{ id: "gl-1", reference: "GL-A" }]);
+    mocked.subLedgerEntry.findMany.mockResolvedValue([{ id: "sub-1", reference: "SUB-B" }]);
+    mocked.dataSource.findMany.mockResolvedValue([
+      { type: "gl" }, { type: "sub_ledger" }, { type: "variance" },
+    ]);
+    mocked.financialRecord.findMany.mockResolvedValue([]);
+
+    const blockers = await getCloseBlockers("u1", "2026-Q1");
+    const breakBlockers = blockers.filter((b) => b.kind === "break");
+    expect(breakBlockers).toHaveLength(2);
+    expect(mocked.break.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          matchRunId: { in: ["r-jan", "r-feb", "r-mar"] },
+          status: "open",
+        }),
+      })
+    );
   });
 });

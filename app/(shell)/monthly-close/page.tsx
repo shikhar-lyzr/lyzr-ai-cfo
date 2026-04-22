@@ -123,7 +123,7 @@ export default async function MonthlyClosePage({
               if (b.kind === "missing_source") {
                 return (
                   <li key={`src-${b.sourceType}-${i}`} className="flex items-center justify-between">
-                    <span>No {b.sourceType} uploaded for {active}</span>
+                    <span>No {humanSourceType(b.sourceType)} uploaded for {active}</span>
                     <Link href="/data-sources?tab=reconciliation" className="text-xs underline">
                       Upload
                     </Link>
@@ -187,4 +187,10 @@ export default async function MonthlyClosePage({
       </div>
     </JourneyPage>
   );
+}
+
+function humanSourceType(t: string): string {
+  if (t === "sub_ledger") return "sub-ledger";
+  if (t === "gl") return "GL";
+  return t;
 }

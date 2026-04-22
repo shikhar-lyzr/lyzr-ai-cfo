@@ -6,7 +6,7 @@ vi.mock("@/lib/db", () => ({
     gLEntry: { count: vi.fn() },
     document: { findFirst: vi.fn() },
     journalAdjustment: { count: vi.fn() },
-    matchRun: { findFirst: vi.fn() },
+    matchRun: { findFirst: vi.fn(), findMany: vi.fn() },
     break: { count: vi.fn() },
   },
 }));
@@ -19,7 +19,7 @@ const m = prisma as unknown as {
   gLEntry: { count: ReturnType<typeof vi.fn> };
   document: { findFirst: ReturnType<typeof vi.fn> };
   journalAdjustment: { count: ReturnType<typeof vi.fn> };
-  matchRun: { findFirst: ReturnType<typeof vi.fn> };
+  matchRun: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
   break: { count: ReturnType<typeof vi.fn> };
 };
 
@@ -31,7 +31,7 @@ describe("deriveTaskCounts", () => {
     m.gLEntry.count.mockResolvedValueOnce(9).mockResolvedValueOnce(10);
     m.document.findFirst.mockResolvedValue({ id: "d1" });
     m.journalAdjustment.count.mockResolvedValue(2);
-    m.matchRun.findFirst.mockResolvedValue({ id: "r1" });
+    m.matchRun.findMany.mockResolvedValue([{ id: "r1" }]);
     m.break.count.mockResolvedValue(3);
 
     const cards = await deriveTaskCounts("u1", "2026-04");
@@ -48,12 +48,39 @@ describe("deriveTaskCounts", () => {
     m.gLEntry.count.mockResolvedValue(0);
     m.document.findFirst.mockResolvedValue(null);
     m.journalAdjustment.count.mockResolvedValue(0);
-    m.matchRun.findFirst.mockResolvedValue(null);
+    m.matchRun.findMany.mockResolvedValue([]);
     m.break.count.mockResolvedValue(0);
 
     const cards = await deriveTaskCounts("u1", "2026-04");
     expect(cards[0]).toMatchObject({ key: "subledger", completed: 0, total: 0, isEmpty: true });
     expect(cards[3]).toMatchObject({ key: "journal", completed: 0, total: 0, isEmpty: true });
     expect(cards[4]).toMatchObject({ key: "package", completed: 0, total: 1 });
+  });
+
+  it("queries with expanded monthly keys when periodKey is a quarter", async () => {
+    m.subLedgerEntry.count.mockResolvedValue(0);
+    m.gLEntry.count.mockResolvedValue(0);
+    m.document.findFirst.mockResolvedValue(null);
+    m.journalAdjustment.count.mockResolvedValue(0);
+    m.matchRun.findMany.mockResolvedValue([]);
+    m.break.count.mockResolvedValue(0);
+
+    await deriveTaskCounts("u1", "2026-Q1");
+
+    // GL/Sub counts must use `periodKey: { in: [...3 months] }`
+    expect(m.subLedgerEntry.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          periodKey: { in: ["2026-01", "2026-02", "2026-03"] },
+        }),
+      })
+    );
+    expect(m.gLEntry.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          periodKey: { in: ["2026-01", "2026-02", "2026-03"] },
+        }),
+      })
+    );
   });
 });

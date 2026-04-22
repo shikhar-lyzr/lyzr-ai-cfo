@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { expandPeriodKey } from "./period-expansion";
 
 // Breaks older than a week are expected to require a journal adjustment by close.
 const EXPECTED_ADJUSTMENT_AGE_DAYS = 7;
@@ -13,26 +14,30 @@ export type TaskCard = {
 };
 
 export async function deriveTaskCounts(userId: string, periodKey: string): Promise<TaskCard[]> {
-  const scope = { dataSource: { userId }, periodKey } as const;
+  const expanded = expandPeriodKey(periodKey);
+  // Recon-keyed tables (GLEntry/SubLedgerEntry/MatchRun/Break) store monthly
+  // periodKeys only. A quarterly/yearly selector on the close page must
+  // aggregate across those months. Document.period is preserved verbatim
+  // because Documents are generated with the user-visible label.
+  const reconScope = { dataSource: { userId }, periodKey: { in: expanded } } as const;
 
-  const [subMatched, subTotal, glMatched, glTotal, varianceDoc, journalCount, lastRun, pkgDoc] =
+  const [subMatched, subTotal, glMatched, glTotal, varianceDoc, journalCount, runs, pkgDoc] =
     await Promise.all([
       prisma.subLedgerEntry.count({
-        where: { ...scope, matchStatus: { not: "unmatched" } },
+        where: { ...reconScope, matchStatus: { not: "unmatched" } },
       }),
-      prisma.subLedgerEntry.count({ where: scope }),
+      prisma.subLedgerEntry.count({ where: reconScope }),
       prisma.gLEntry.count({
-        where: { ...scope, matchStatus: { not: "unmatched" } },
+        where: { ...reconScope, matchStatus: { not: "unmatched" } },
       }),
-      prisma.gLEntry.count({ where: scope }),
+      prisma.gLEntry.count({ where: reconScope }),
       prisma.document.findFirst({
         where: { userId, type: "variance_report", period: periodKey },
         select: { id: true },
       }),
       prisma.journalAdjustment.count({ where: { userId } }),
-      prisma.matchRun.findFirst({
-        where: { userId, periodKey },
-        orderBy: { startedAt: "desc" },
+      prisma.matchRun.findMany({
+        where: { userId, periodKey: { in: expanded } },
         select: { id: true },
       }),
       prisma.document.findFirst({
@@ -41,9 +46,10 @@ export async function deriveTaskCounts(userId: string, periodKey: string): Promi
       }),
     ]);
 
-  const expectedAdjustments = lastRun
+  const runIds = runs.map((r) => r.id);
+  const expectedAdjustments = runIds.length
     ? await prisma.break.count({
-        where: { matchRunId: lastRun.id, status: "open", ageDays: { gte: EXPECTED_ADJUSTMENT_AGE_DAYS } },
+        where: { matchRunId: { in: runIds }, status: "open", ageDays: { gte: EXPECTED_ADJUSTMENT_AGE_DAYS } },
       })
     : 0;
 

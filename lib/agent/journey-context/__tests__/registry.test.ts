@@ -32,7 +32,7 @@ describe("journey-context registry", () => {
         signals: { matchRate: 0, openBreakPenalty: 0, freshnessPenalty: 0.67, variancePenalty: 1 },
       } as any);
       vi.spyOn(closeStats, "getCloseBlockers").mockResolvedValue([
-        { kind: "missing_source", sourceType: "subledger" },
+        { kind: "missing_source", sourceType: "sub_ledger" },
         { kind: "missing_source", sourceType: "variance" },
         {
           kind: "variance",
