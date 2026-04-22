@@ -3,7 +3,7 @@ import { ClipboardCheck } from "lucide-react";
 import Link from "next/link";
 import { JourneyPage } from "@/components/journey/journey-page";
 import { getSession } from "@/lib/auth";
-import { listClosePeriods, resolveActivePeriod } from "@/lib/close/period";
+import { listClosePeriods, resolveActivePeriod, safely } from "@/lib/close/period";
 import { getCloseReadiness, getCloseBlockers } from "@/lib/close/stats";
 import { deriveTaskCounts } from "@/lib/close/tasks";
 import { PeriodPicker } from "./period-picker";
@@ -56,9 +56,9 @@ export default async function MonthlyClosePage({
   }
 
   const [readiness, blockers, tasks] = await Promise.all([
-    getCloseReadiness(userId, active),
-    getCloseBlockers(userId, active),
-    deriveTaskCounts(userId, active),
+    safely(() => getCloseReadiness(userId, active), { hasData: false as const }),
+    safely(() => getCloseBlockers(userId, active), []),
+    safely(() => deriveTaskCounts(userId, active), []),
   ]);
 
   const header = (

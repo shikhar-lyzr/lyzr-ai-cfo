@@ -1,5 +1,19 @@
 import { prisma } from "@/lib/db";
 
+// Run an async producer; fall back to `fallback` if it throws. Used by callers
+// (page.tsx, /api/close/readiness) to honour the design-doc contract: "Each
+// function in the array handles its own errors and returns a fallback shape
+// rather than throwing." A Prisma connection blip on one section must not 500
+// the whole page when the others could still render.
+export async function safely<T>(producer: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await producer();
+  } catch (err) {
+    console.error("[close] safely() caught:", err);
+    return fallback;
+  }
+}
+
 export type ClosePeriod = { periodKey: string; source: "recon" | "records" | "both" };
 
 export function resolveActivePeriod(
