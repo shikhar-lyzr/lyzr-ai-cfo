@@ -62,11 +62,14 @@ export default async function MonthlyClosePage({
   ]);
 
   const header = (
-    <div className="flex items-center gap-2 mb-6">
-      <span className="text-xs text-muted-foreground">Period:</span>
-      <Suspense fallback={<span className="text-xs text-muted-foreground">loading…</span>}>
-        <PeriodPicker />
-      </Suspense>
+    <div className="flex items-center justify-between gap-2 mb-6">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Period:</span>
+        <Suspense fallback={<span className="text-xs text-muted-foreground">loading…</span>}>
+          <PeriodPicker />
+        </Suspense>
+      </div>
+      <GeneratePackageButton period={active} />
     </div>
   );
 
@@ -178,11 +181,6 @@ export default async function MonthlyClosePage({
             )}
           </div>
         ))}
-      </div>
-
-      {/* Generate package */}
-      <div className="flex justify-end">
-        <GeneratePackageButton period={active} />
       </div>
     </JourneyPage>
   );
