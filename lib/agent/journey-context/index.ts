@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildReconciliationContext } from "./financial-reconciliation";
+import { buildMonthlyCloseContext } from "./monthly-close";
 
 export type JourneyContextBuilder = (userId: string, periodKey: string) => Promise<string>;
 
@@ -14,6 +15,7 @@ export const JOURNEY_TITLES: Record<string, string> = {
 
 const BUILDERS: Record<string, JourneyContextBuilder> = {
   "financial-reconciliation": buildReconciliationContext,
+  "monthly-close": buildMonthlyCloseContext,
 };
 
 export async function buildJourneyContext(
