@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/db";
 
+// Breaks older than a week are expected to require a journal adjustment by close.
+const EXPECTED_ADJUSTMENT_AGE_DAYS = 7;
+
 export type TaskCard = {
   key: "subledger" | "gl" | "variance" | "journal" | "package";
   label: string;
@@ -10,16 +13,18 @@ export type TaskCard = {
 };
 
 export async function deriveTaskCounts(userId: string, periodKey: string): Promise<TaskCard[]> {
+  const scope = { dataSource: { userId }, periodKey } as const;
+
   const [subMatched, subTotal, glMatched, glTotal, varianceDoc, journalCount, lastRun, pkgDoc] =
     await Promise.all([
       prisma.subLedgerEntry.count({
-        where: { dataSource: { userId }, periodKey, matchStatus: { not: "unmatched" } },
+        where: { ...scope, matchStatus: { not: "unmatched" } },
       }),
-      prisma.subLedgerEntry.count({ where: { dataSource: { userId }, periodKey } }),
+      prisma.subLedgerEntry.count({ where: scope }),
       prisma.gLEntry.count({
-        where: { dataSource: { userId }, periodKey, matchStatus: { not: "unmatched" } },
+        where: { ...scope, matchStatus: { not: "unmatched" } },
       }),
-      prisma.gLEntry.count({ where: { dataSource: { userId }, periodKey } }),
+      prisma.gLEntry.count({ where: scope }),
       prisma.document.findFirst({
         where: { userId, type: "variance_report", period: periodKey },
         select: { id: true },
@@ -37,7 +42,9 @@ export async function deriveTaskCounts(userId: string, periodKey: string): Promi
     ]);
 
   const expectedAdjustments = lastRun
-    ? await prisma.break.count({ where: { matchRunId: lastRun.id, status: "open", ageDays: { gte: 7 } } })
+    ? await prisma.break.count({
+        where: { matchRunId: lastRun.id, status: "open", ageDays: { gte: EXPECTED_ADJUSTMENT_AGE_DAYS } },
+      })
     : 0;
 
   return [
