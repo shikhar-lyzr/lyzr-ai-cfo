@@ -231,10 +231,14 @@ export async function buildContext(
   return parts.join("\n\n");
 }
 
+import type { PipelineStep } from "./pipeline-types";
+import { classifyEvent } from "./classify-event";
+
 export interface AgentStreamCallbacks {
   onDelta: (text: string) => void;
   onComplete: (fullText: string) => void;
   onError: (error: string) => void;
+  onStep?: (step: PipelineStep) => void;
 }
 
 /**
@@ -273,6 +277,11 @@ export async function chatWithAgent(
 
   let fullText = "";
 
+  // Track active tool-use step ids so we can mark them "completed" on
+  // matching tool_result messages, giving the pipeline UI real transitions
+  // instead of everything stuck at "running".
+  const toolStepById = new Map<string, string>(); // toolUseId -> stepId
+
   try {
     for await (const msg of result) {
       if (msg.type === "delta" && msg.deltaType === "text") {
@@ -289,6 +298,26 @@ export async function chatWithAgent(
         if (!fullText && msg.content) {
           fullText = msg.content;
           callbacks.onDelta(msg.content);
+        }
+      } else if (msg.type === "tool_use") {
+        const step = classifyEvent(msg);
+        if (step && callbacks.onStep) {
+          const toolUseId = (msg as unknown as Record<string, unknown>).id as string | undefined;
+          if (toolUseId) toolStepById.set(toolUseId, step.id);
+          callbacks.onStep(step);
+        }
+      } else if (msg.type === "tool_result") {
+        if (!callbacks.onStep) continue;
+        const toolUseId = (msg as unknown as Record<string, unknown>).toolUseId as string | undefined;
+        const stepId = toolUseId ? toolStepById.get(toolUseId) : undefined;
+        if (stepId) {
+          const isError = (msg as unknown as Record<string, unknown>).isError === true;
+          callbacks.onStep({
+            id: stepId,
+            type: "tool_exec",
+            label: "",
+            status: isError ? "failed" : "completed",
+          });
         }
       } else if (msg.type === "system" && msg.subtype === "error") {
         callbacks.onError(msg.content || "Agent system error");

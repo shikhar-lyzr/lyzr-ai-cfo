@@ -133,16 +133,20 @@ export default async function MonthlyClosePage({
               return (
                 <li
                   key={`var-${b.category}-${b.account}-${i}`}
-                  className="flex items-center justify-between"
+                  className="flex items-center justify-between gap-3"
                 >
-                  <span>
-                    {b.account}: actual {(b.pct * 100).toFixed(0)}%{" "}
-                    {b.pct >= 0 ? "above" : "below"} budget
+                  <span className="truncate">
+                    <span className="font-medium">{b.account}</span>
+                    <span className="text-muted-foreground"> ({b.category})</span>
+                    : ${b.actual.toLocaleString()} actual vs ${b.budget.toLocaleString()} budget
+                    <span className={b.pct >= 0 ? "text-red-700" : "text-emerald-700"}>
+                      {" "}({b.pct >= 0 ? "+" : ""}{(b.pct * 100).toFixed(0)}%)
+                    </span>
                   </span>
                   <ExplainButton
                     prompt={`Why did ${b.account} (${b.category}) deviate ${(b.pct * 100).toFixed(
                       0
-                    )}% from budget in ${active}?`}
+                    )}% from budget in ${active}? Actual was $${b.actual.toLocaleString()} vs budget $${b.budget.toLocaleString()}.`}
                   />
                 </li>
               );

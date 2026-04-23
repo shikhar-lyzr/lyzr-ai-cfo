@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, BarChart3 } from "lucide-react";
+import { FileText, BarChart3, ClipboardCheck } from "lucide-react";
 import { clsx } from "clsx";
 import { relativeTime } from "@/lib/utils";
 
@@ -20,11 +20,13 @@ interface DocumentListProps {
 const typeIcons: Record<string, typeof FileText> = {
   variance_report: BarChart3,
   ar_summary: FileText,
+  close_package: ClipboardCheck,
 };
 
 const typeLabels: Record<string, string> = {
   variance_report: "Variance Report",
   ar_summary: "AR Summary",
+  close_package: "Close Package",
 };
 
 export function DocumentList({ documents, selectedId, onSelect }: DocumentListProps) {

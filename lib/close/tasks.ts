@@ -4,6 +4,23 @@ import { expandPeriodKey } from "./period-expansion";
 // Breaks older than a week are expected to require a journal adjustment by close.
 const EXPECTED_ADJUSTMENT_AGE_DAYS = 7;
 
+// Map a list of monthly period keys (YYYY-MM) to an inclusive date range
+// [startOfFirstMonth, startOfMonthAfterLast). Used to filter tables that
+// don't carry a periodKey column (e.g. JournalAdjustment, keyed by
+// entryDate). Returns null for non-monthly or empty inputs; callers treat
+// null as "no date filter".
+function monthsToDateRange(keys: string[]): { gte: Date; lt: Date } | null {
+  const monthly = keys.filter((k) => /^\d{4}-(0[1-9]|1[0-2])$/.test(k)).sort();
+  if (monthly.length === 0) return null;
+  const [first] = monthly;
+  const last = monthly[monthly.length - 1];
+  const [fy, fm] = first.split("-").map(Number);
+  const [ly, lm] = last.split("-").map(Number);
+  const gte = new Date(Date.UTC(fy, fm - 1, 1));
+  const lt = new Date(Date.UTC(ly, lm, 1)); // lm (not lm-1) rolls over to next month
+  return { gte, lt };
+}
+
 export type TaskCard = {
   key: "subledger" | "gl" | "variance" | "journal" | "package";
   label: string;
@@ -35,7 +52,12 @@ export async function deriveTaskCounts(userId: string, periodKey: string): Promi
         where: { userId, type: "variance_report", period: periodKey },
         select: { id: true },
       }),
-      prisma.journalAdjustment.count({ where: { userId } }),
+      (() => {
+        const range = monthsToDateRange(expanded);
+        return prisma.journalAdjustment.count({
+          where: { userId, ...(range ? { entryDate: range } : {}) },
+        });
+      })(),
       prisma.matchRun.findMany({
         where: { userId, periodKey: { in: expanded } },
         select: { id: true },

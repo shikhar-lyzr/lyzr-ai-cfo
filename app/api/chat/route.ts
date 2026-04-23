@@ -72,6 +72,9 @@ export async function POST(request: NextRequest) {
             fullResponse += text;
             sseWrite(controller, encoder, "delta", { text });
           },
+          onStep: (step) => {
+            sseWrite(controller, encoder, "pipeline_step", step);
+          },
           onComplete: async (text) => {
             await finish(text || fullResponse);
           },

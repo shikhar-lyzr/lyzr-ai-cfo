@@ -83,4 +83,40 @@ describe("deriveTaskCounts", () => {
       })
     );
   });
+
+  it("scopes journal adjustments to the period's date range", async () => {
+    m.subLedgerEntry.count.mockResolvedValue(0);
+    m.gLEntry.count.mockResolvedValue(0);
+    m.document.findFirst.mockResolvedValue(null);
+    m.journalAdjustment.count.mockResolvedValue(0);
+    m.matchRun.findMany.mockResolvedValue([]);
+    m.break.count.mockResolvedValue(0);
+
+    await deriveTaskCounts("u1", "2026-Q1");
+
+    expect(m.journalAdjustment.count).toHaveBeenCalledWith({
+      where: {
+        userId: "u1",
+        entryDate: {
+          gte: new Date(Date.UTC(2026, 0, 1)),
+          lt: new Date(Date.UTC(2026, 3, 1)),
+        },
+      },
+    });
+  });
+
+  it("omits date filter on journal adjustments when period cannot be mapped to months", async () => {
+    m.subLedgerEntry.count.mockResolvedValue(0);
+    m.gLEntry.count.mockResolvedValue(0);
+    m.document.findFirst.mockResolvedValue(null);
+    m.journalAdjustment.count.mockResolvedValue(0);
+    m.matchRun.findMany.mockResolvedValue([]);
+    m.break.count.mockResolvedValue(0);
+
+    await deriveTaskCounts("u1", "FY26");
+
+    expect(m.journalAdjustment.count).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+    });
+  });
 });

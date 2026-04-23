@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get("userId");
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
-  if (!userId) {
-    return NextResponse.json({ error: "userId required" }, { status: 400 });
+  // The client passes `userId` for backwards compatibility with older clients,
+  // but we always authoritate against the session — never trust the query
+  // param. Reject requests for a different user rather than silently leaking.
+  const { searchParams } = new URL(request.url);
+  const requestedUserId = searchParams.get("userId");
+  if (requestedUserId && requestedUserId !== session.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const sources = await prisma.dataSource.findMany({
-    where: { userId },
+    where: { userId: session.userId },
     orderBy: { createdAt: "desc" },
   });
 
