@@ -79,3 +79,30 @@ describe("upload auto-match", { timeout: 30_000 }, () => {
     void nonAwaited;
   });
 });
+
+describe("upload capital shapes", () => {
+  it("route handler dispatches capital_components to ingestCapitalComponents", () => {
+    const src = readFileSync(join(__dirname, "route.ts"), "utf8");
+    // There should be a branch on shape === "capital_components" that calls ingestCapitalComponents.
+    expect(src).toMatch(/shape === "capital_components"/);
+    expect(src).toMatch(/ingestCapitalComponents\s*\(/);
+    // The branch must await (not fire-and-forget).
+    expect(src).toMatch(/await\s+ingestCapitalComponents/);
+  });
+
+  it("route handler dispatches rwa_breakdown to ingestRwaBreakdown", () => {
+    const src = readFileSync(join(__dirname, "route.ts"), "utf8");
+    expect(src).toMatch(/shape === "rwa_breakdown"/);
+    expect(src).toMatch(/ingestRwaBreakdown\s*\(/);
+    expect(src).toMatch(/await\s+ingestRwaBreakdown/);
+  });
+
+  it("capital branches run before the AI-engine check (no API keys required)", () => {
+    const src = readFileSync(join(__dirname, "route.ts"), "utf8");
+    const capitalIdx = src.indexOf('shape === "capital_components"');
+    const aiCheckIdx = src.indexOf("AI engine not configured");
+    expect(capitalIdx).toBeGreaterThan(-1);
+    expect(aiCheckIdx).toBeGreaterThan(-1);
+    expect(capitalIdx).toBeLessThan(aiCheckIdx);
+  });
+});
