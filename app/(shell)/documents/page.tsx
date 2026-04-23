@@ -21,6 +21,7 @@ interface DocFull {
   title: string;
   body: string;
   createdAt: string;
+  period?: string | null;
 }
 
 export default function DocumentsPage() {
@@ -92,14 +93,17 @@ function DocumentsPageInner() {
     }
   }, [searchParams, selectedId, handleSelect]);
 
-  const handleGenerate = async (type: "variance_report" | "ar_summary") => {
+  const handleGenerate = async (
+    type: "variance_report" | "ar_summary" | "close_package",
+    period?: string | null,
+  ) => {
     setShowDropdown(false);
     setIsGenerating(true);
     try {
       const res = await fetch("/api/documents/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ type, ...(period ? { period } : {}) }),
       });
       if (res.ok) {
         const newDoc = await res.json();
@@ -107,7 +111,8 @@ function DocumentsPageInner() {
         await fetchDocuments();
         await handleSelect(newDoc.id);
       } else {
-        setError("Failed to generate document.");
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "Failed to generate document.");
       }
     } catch {
       setError("Connection failed. Could not generate document.");
@@ -188,7 +193,12 @@ function DocumentsPageInner() {
           <DocumentViewer
               document={selectedDoc}
               isLoading={isLoadingDoc}
-              onRegenerate={(type) => handleGenerate(type as "variance_report" | "ar_summary")}
+              onRegenerate={(type, period) =>
+                handleGenerate(
+                  type as "variance_report" | "ar_summary" | "close_package",
+                  period,
+                )
+              }
               isRegenerating={isGenerating}
             />
         </div>

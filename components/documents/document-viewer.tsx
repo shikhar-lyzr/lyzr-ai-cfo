@@ -10,9 +10,10 @@ interface DocumentViewerProps {
     title: string;
     body: string;
     createdAt: string;
+    period?: string | null;
   } | null;
   isLoading: boolean;
-  onRegenerate?: (type: string) => void;
+  onRegenerate?: (type: string, period: string | null) => void;
   isRegenerating?: boolean;
 }
 
@@ -45,7 +46,7 @@ export function DocumentViewer({ document, isLoading, onRegenerate, isRegenerati
           </h1>
           {onRegenerate && (
             <button
-              onClick={() => onRegenerate(document.type)}
+              onClick={() => onRegenerate(document.type, document.period ?? null)}
               disabled={isRegenerating}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border border-border text-text-secondary hover:bg-border/30 disabled:opacity-50 transition-colors"
             >
