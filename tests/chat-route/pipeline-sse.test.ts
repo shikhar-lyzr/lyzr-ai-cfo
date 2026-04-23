@@ -105,4 +105,30 @@ describe("SSE pipeline_step wire", { timeout: 30_000 }, () => {
     // Terminal done event
     expect(frames.at(-1)?.event).toBe("done");
   });
+
+  it("tool_use emits a pipeline_step and tool_result flips it to completed", async () => {
+    vi.mocked(query).mockReturnValue(
+      scriptedQuery([
+        toolUseMsg("tu-1", "search_records", { account: "Marketing" }),
+        toolResultMsg("tu-1", '{"count":1}'),
+        deltaMsg("Found 1 record."),
+      ]) as ReturnType<typeof query>,
+    );
+
+    const res = await POST(makeReq({ userId, message: "search marketing" }));
+    const frames = await readSseFrames(res.body);
+
+    const toolFrames = frames.filter(
+      (f) => f.event === "pipeline_step" && (f.data as { id: string }).id !== "step-0",
+    );
+    // One running + one completed
+    expect(toolFrames.length).toBeGreaterThanOrEqual(2);
+
+    const running = toolFrames.find((f) => (f.data as { status: string }).status === "running");
+    const completed = toolFrames.find((f) => (f.data as { status: string }).status === "completed");
+    expect(running).toBeDefined();
+    expect(completed).toBeDefined();
+    expect((running!.data as { label: string }).label).toBe("Searching financial records");
+    expect((running!.data as { id: string }).id).toBe((completed!.data as { id: string }).id);
+  });
 });
