@@ -231,7 +231,7 @@ function DataSourcesPageInner() {
         </div>
 
         {/* Upload + Link areas */}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className={activeTab === "capital" ? "grid gap-4" : "grid gap-4 md:grid-cols-2"}>
           <UploadArea
             onUpload={handleUpload}
             isUploading={isUploading}
@@ -243,17 +243,20 @@ function DataSourcesPageInner() {
                   : undefined
             }
           />
-          <LinkSheetArea
-            shape={
-              activeTab === "reconciliation"
-                ? "gl"
-                : activeTab === "capital"
-                  ? "capital_components"
-                  : activeTab
-            }
-            onLink={handleLink}
-            isLinking={isLinking}
-          />
+          {activeTab !== "capital" && (
+            <LinkSheetArea
+              shape={
+                activeTab === "reconciliation"
+                  ? "gl"
+                  : // @ts-expect-error - dead code path kept for future re-enablement
+                    activeTab === "capital"
+                    ? "capital_components"
+                    : activeTab
+              }
+              onLink={handleLink}
+              isLinking={isLinking}
+            />
+          )}
         </div>
 
         {uploadResult && (
