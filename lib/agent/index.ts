@@ -8,6 +8,7 @@ import { createFinancialTools } from "./tools";
 import { createReconciliationTools } from "./tools/reconciliation";
 import { buildAllowedTools } from "./allowed-tools";
 import { buildJourneyContext } from "./journey-context";
+import { sanitizeReportBody } from "./sanitize-report";
 
 function resolveAgentDir(): string {
   const source = join(process.cwd(), "agent");
@@ -458,13 +459,19 @@ export async function generateReport(
       (await import("@/lib/close/tasks")).deriveTaskCounts(userId, period),
     ]);
 
-    const prompt = `Produce a monthly close package for period ${period}.
+    const prompt = `You are writing the BODY of a Monthly Close Package document for period ${period}. Output ONLY the markdown body — no preamble, no "Here is the report", no "has been generated and saved", no artifact IDs, no closing remarks. The caller is persisting your output verbatim.
+
+Start with a top-level heading (e.g. "# Monthly Close Package — ${period}"). Then include:
+1. **Executive Summary** — score, tier, one-paragraph narrative
+2. **Blockers** — grouped by kind (breaks, missing sources, variance anomalies), with severity and dollar amounts where applicable
+3. **Task Progress** — table or bullet list of the 5 task cards
+4. **Recommended Next Actions** — numbered list, concrete, each tied to one of the blockers above
+
+Cite numbers from the inputs; do NOT invent figures.
 
 Readiness: ${JSON.stringify(readiness)}
 Blockers: ${JSON.stringify(blockers)}
-Task progress: ${JSON.stringify(tasks)}
-
-Structure the report as: (1) Executive summary with score + tier, (2) Blockers with severity, (3) Task progress, (4) Recommended next actions. Cite numbers from the inputs; do not invent figures.`;
+Task progress: ${JSON.stringify(tasks)}`;
 
     // Run the LLM inline (same streaming-collect pattern used below for the
     // agent-driven report types) and capture the markdown body ourselves, so
@@ -491,11 +498,12 @@ Structure the report as: (1) Executive summary with score + tier, (2) Blockers w
       throw new Error("close_package generation returned empty body");
     }
 
+    const cleanBody = sanitizeReportBody(body);
     const title = `Close Package — ${period}`;
     await prisma.document.create({
-      data: { userId, type, title, body, period },
+      data: { userId, type, title, body: cleanBody, period },
     });
-    return body;
+    return cleanBody;
   }
 
   const context = await buildContext(userId, undefined, undefined, period);
