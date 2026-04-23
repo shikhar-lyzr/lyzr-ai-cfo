@@ -9,6 +9,7 @@ import { createReconciliationTools } from "./tools/reconciliation";
 import { buildAllowedTools } from "./allowed-tools";
 import { buildJourneyContext } from "./journey-context";
 import { sanitizeReportBody } from "./sanitize-report";
+import { gatherVarianceReportData, gatherArSummaryData } from "./report-data";
 
 function resolveAgentDir(): string {
   const source = join(process.cwd(), "agent");
@@ -521,43 +522,83 @@ Task progress: ${JSON.stringify(tasks)}`;
     return cleanBody;
   }
 
-  const context = await buildContext(userId, undefined, undefined, period);
-  const tools = buildTools(userId, period);
+  // variance_report + ar_summary: server-driven path. Previously these asked
+  // the agent to orchestrate a 3-step tool chain (gather data, compose
+  // markdown, call save_document). If the model skipped any step no
+  // Document persisted, and the POST route 500'd. Instead, compute the
+  // inputs deterministically, run a single-turn LLM to produce the body,
+  // sanitize, and persist server-side — mirrors the close_package flow.
+  let body = "";
+  let title = "";
+  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
-  const prompt = type === "variance_report"
-    ? `Generate a comprehensive Monthly Variance Report. Steps:
-1. Call generate_variance_report to gather all variance data across all data sources
-2. Compose a professional markdown report with: executive summary, top variances by impact, category breakdown, and recommended actions
-3. Call save_document with type="variance_report", a descriptive title including the current date, and the full markdown body
-4. Confirm the report was saved.`
-    : `Generate a comprehensive AR Aging Summary. Steps:
-1. Call generate_ar_summary to gather all AR/invoice data across all data sources
-2. Compose a professional markdown report with: total outstanding balance, aging bucket breakdown, recent dunning activity, escalation candidates, and recommended next steps
-3. Call save_document with type="ar_summary", a descriptive title including the current date, and the full markdown body
-4. Confirm the report was saved.`;
+  if (type === "variance_report") {
+    const data = await gatherVarianceReportData(userId);
+    if (!data) throw new Error("No variance records found — upload a budget/actual CSV first");
+    title = `Monthly Variance Report — ${today}`;
+    const prompt = `You are writing the BODY of a Monthly Variance Report. Output ONLY the markdown body — no preamble, no "Here is", no "has been generated and saved", no artifact IDs, no closing remarks. The caller is persisting your output verbatim.
 
-  const result = query({
-    prompt,
-    dir: AGENT_DIR,
-    model: MODEL,
-    systemPromptSuffix: context,
-    tools,
-    allowedTools: buildAllowedTools(tools),
-    maxTurns: 10,
-    constraints: { temperature: 0.3 },
-  });
+Start with a top-level heading. Then include:
+1. **Executive Summary** — total actual vs budget, overall variance %, critical/warning/info counts
+2. **Top Variances by Impact** — bullet list of topVariances with dollar amounts, drivers, severity
+3. **Category Breakdown** — table with variance % per category
+4. **Recommended Actions** — numbered list tied to the top variances
 
-  let fullText = "";
+Cite numbers from the inputs; do NOT invent figures.
 
-  for await (const msg of result) {
-    if (msg.type === "delta" && msg.deltaType === "text") {
-      fullText += msg.content;
-    } else if (msg.type === "assistant" && !fullText && msg.content) {
-      fullText = msg.content;
+Data: ${JSON.stringify(data)}`;
+
+    const result = query({
+      prompt,
+      dir: AGENT_DIR,
+      model: MODEL,
+      maxTurns: 1,
+      constraints: { temperature: 0.3 },
+    });
+    for await (const msg of result) {
+      if (msg.type === "delta" && msg.deltaType === "text") body += msg.content;
+      else if (msg.type === "assistant" && !body && msg.content) body = msg.content;
+    }
+  } else {
+    // ar_summary
+    const data = await gatherArSummaryData(userId);
+    if (!data) throw new Error("No invoices found — upload an AR CSV first");
+    title = `AR Aging Summary — ${today}`;
+    const prompt = `You are writing the BODY of an AR Aging Summary. Output ONLY the markdown body — no preamble, no "Here is", no "has been generated and saved", no artifact IDs, no closing remarks. The caller is persisting your output verbatim.
+
+Start with a top-level heading. Then include:
+1. **Executive Summary** — total outstanding, invoice count, one-line collection health assessment
+2. **Aging Buckets** — table: current / 1-14 / 15-44 / 45+ days overdue with count and $ amount
+3. **Dunning Activity** — sent, snoozed, escalated, pending counts
+4. **Escalation Candidates** — bullet list of top 5 invoices in 45+ days bucket
+5. **Recommended Next Steps** — numbered list
+
+Cite numbers from the inputs; do NOT invent figures.
+
+Data: ${JSON.stringify(data)}`;
+
+    const result = query({
+      prompt,
+      dir: AGENT_DIR,
+      model: MODEL,
+      maxTurns: 1,
+      constraints: { temperature: 0.3 },
+    });
+    for await (const msg of result) {
+      if (msg.type === "delta" && msg.deltaType === "text") body += msg.content;
+      else if (msg.type === "assistant" && !body && msg.content) body = msg.content;
     }
   }
 
-  return fullText;
+  if (!body.trim()) {
+    throw new Error(`${type} generation returned empty body`);
+  }
+
+  const cleanBody = sanitizeReportBody(body);
+  await prisma.document.create({
+    data: { userId, type, title, body: cleanBody, ...(period ? { period } : {}) },
+  });
+  return cleanBody;
 }
 
 export type { GCMessage };
