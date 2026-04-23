@@ -20,38 +20,48 @@ export async function ingestCapitalComponents(
 }> {
   const { components, skipped } = parseCapitalComponents(headers, rows);
 
-  const dataSource = await prisma.dataSource.create({
-    data: {
-      userId,
-      type: "capital_components",
-      name: fileName,
-      status: "processing",
-      metadata: JSON.stringify({ headers, shape: "capital_components" }),
-      contentHash,
-    },
-  });
-
-  if (components.length > 0) {
-    await prisma.capitalComponent.createMany({
-      data: components.map((c) => ({
-        dataSourceId: dataSource.id,
-        periodKey: c.periodKey,
-        component: c.component,
-        amount: c.amount,
-        currency: c.currency,
-      })),
-    });
-  }
-
   const periodsTouched = [...new Set(components.map((c) => c.periodKey))];
+
+  // Wrap the DataSource write chain in a transaction so a mid-chain failure
+  // cannot leave a DataSource stranded in status="processing" with orphan
+  // CapitalComponent rows. Period upsert and snapshot recompute stay outside
+  // the transaction — they're idempotent recompute work, not part of the
+  // indivisible ingest unit. Matches the lib/reconciliation/persist.ts
+  // pattern on ingestGl/ingestSubLedger.
+  const dataSource = await prisma.$transaction(
+    async (tx) => {
+      const ds = await tx.dataSource.create({
+        data: {
+          userId,
+          type: "capital_components",
+          name: fileName,
+          status: "processing",
+          metadata: JSON.stringify({ headers, shape: "capital_components" }),
+          contentHash,
+        },
+      });
+
+      await tx.capitalComponent.createMany({
+        data: components.map((c) => ({
+          dataSourceId: ds.id,
+          periodKey: c.periodKey,
+          component: c.component,
+          amount: c.amount,
+          currency: c.currency,
+        })),
+      });
+
+      return tx.dataSource.update({
+        where: { id: ds.id },
+        data: { status: "ready", recordCount: components.length },
+      });
+    },
+    { timeout: 30_000 },
+  );
+
   for (const pk of periodsTouched) {
     await upsertCapitalPeriod(userId, pk);
   }
-
-  await prisma.dataSource.update({
-    where: { id: dataSource.id },
-    data: { status: "ready", recordCount: components.length },
-  });
 
   for (const pk of periodsTouched) {
     await recomputeCapitalSnapshot(userId, pk);
@@ -77,40 +87,50 @@ export async function ingestRwaBreakdown(
 }> {
   const { lines, skipped } = parseRwaBreakdown(headers, rows);
 
-  const dataSource = await prisma.dataSource.create({
-    data: {
-      userId,
-      type: "rwa_breakdown",
-      name: fileName,
-      status: "processing",
-      metadata: JSON.stringify({ headers, shape: "rwa_breakdown" }),
-      contentHash,
-    },
-  });
-
-  if (lines.length > 0) {
-    await prisma.rwaLine.createMany({
-      data: lines.map((l) => ({
-        dataSourceId: dataSource.id,
-        periodKey: l.periodKey,
-        riskType: l.riskType,
-        exposureClass: l.exposureClass,
-        exposureAmount: l.exposureAmount,
-        riskWeight: l.riskWeight,
-        rwa: l.rwa,
-      })),
-    });
-  }
-
   const periodsTouched = [...new Set(lines.map((l) => l.periodKey))];
+
+  // Wrap the DataSource write chain in a transaction so a mid-chain failure
+  // cannot leave a DataSource stranded in status="processing" with orphan
+  // RwaLine rows. Period upsert and snapshot recompute stay outside the
+  // transaction — they're idempotent recompute work, not part of the
+  // indivisible ingest unit. Matches the lib/reconciliation/persist.ts
+  // pattern on ingestGl/ingestSubLedger.
+  const dataSource = await prisma.$transaction(
+    async (tx) => {
+      const ds = await tx.dataSource.create({
+        data: {
+          userId,
+          type: "rwa_breakdown",
+          name: fileName,
+          status: "processing",
+          metadata: JSON.stringify({ headers, shape: "rwa_breakdown" }),
+          contentHash,
+        },
+      });
+
+      await tx.rwaLine.createMany({
+        data: lines.map((l) => ({
+          dataSourceId: ds.id,
+          periodKey: l.periodKey,
+          riskType: l.riskType,
+          exposureClass: l.exposureClass,
+          exposureAmount: l.exposureAmount,
+          riskWeight: l.riskWeight,
+          rwa: l.rwa,
+        })),
+      });
+
+      return tx.dataSource.update({
+        where: { id: ds.id },
+        data: { status: "ready", recordCount: lines.length },
+      });
+    },
+    { timeout: 30_000 },
+  );
+
   for (const pk of periodsTouched) {
     await upsertCapitalPeriod(userId, pk);
   }
-
-  await prisma.dataSource.update({
-    where: { id: dataSource.id },
-    data: { status: "ready", recordCount: lines.length },
-  });
 
   for (const pk of periodsTouched) {
     await recomputeCapitalSnapshot(userId, pk);

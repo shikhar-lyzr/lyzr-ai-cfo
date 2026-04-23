@@ -95,4 +95,96 @@ describe("capital persist", { timeout: 30_000 }, () => {
     const periods = await prisma.capitalPeriod.findMany({ where: { userId } });
     expect(periods.map((p) => p.periodKey).sort()).toEqual(["2026-Q1", "2026-Q2"]);
   });
+
+  it("ignores DataSources not in status='ready' when recomputing", async () => {
+    // Manually create a DataSource in status="processing" with components.
+    // recomputeCapitalSnapshot should not pick them up because it filters
+    // on status="ready".
+    const ds = await prisma.dataSource.create({
+      data: {
+        userId,
+        type: "capital_components",
+        name: "processing.csv",
+        status: "processing",
+      },
+    });
+    await prisma.capitalComponent.createMany({
+      data: [
+        { dataSourceId: ds.id, periodKey: "2026-Q1", component: "cet1_capital", amount: 100, currency: "USD" },
+        { dataSourceId: ds.id, periodKey: "2026-Q1", component: "total_rwa", amount: 1000, currency: "USD" },
+      ],
+    });
+
+    await recomputeCapitalSnapshot(userId, "2026-Q1");
+
+    const snap = await prisma.capitalSnapshot.findUnique({
+      where: { userId_periodKey: { userId, periodKey: "2026-Q1" } },
+    });
+    expect(snap).toBeNull();
+  });
+
+  it("scopes recompute by userId (no cross-tenant leakage)", async () => {
+    // Create a second user and ingest components for them.
+    const other = await prisma.user.create({
+      data: {
+        lyzrAccountId: `other-${Date.now()}-${Math.random()}`,
+        email: `other-${Date.now()}-${Math.random()}@ex.com`,
+        name: "Other",
+      },
+    });
+    await ingestCapitalComponents(
+      other.id,
+      "other.csv",
+      ["period", "component", "amount"],
+      [
+        ["2026-Q1", "cet1_capital", "999"],
+        ["2026-Q1", "total_rwa", "10000"],
+      ],
+      `hash-other-${Date.now()}`,
+    );
+
+    // Now run recompute for the ORIGINAL user for the same period —
+    // no snapshot should be created because that user has no components.
+    await recomputeCapitalSnapshot(userId, "2026-Q1");
+
+    const ourSnap = await prisma.capitalSnapshot.findUnique({
+      where: { userId_periodKey: { userId, periodKey: "2026-Q1" } },
+    });
+    expect(ourSnap).toBeNull();
+
+    // But the other user's snapshot DOES exist.
+    const theirSnap = await prisma.capitalSnapshot.findUnique({
+      where: { userId_periodKey: { userId: other.id, periodKey: "2026-Q1" } },
+    });
+    expect(theirSnap).not.toBeNull();
+  });
+
+  it("deletes stale snapshot when the ingest DataSource is removed", async () => {
+    const { dataSource } = await ingestCapitalComponents(
+      userId,
+      "to-delete.csv",
+      ["period", "component", "amount"],
+      [
+        ["2026-Q1", "cet1_capital", "500"],
+        ["2026-Q1", "total_rwa", "5000"],
+      ],
+      `hash-del-${Date.now()}`,
+    );
+
+    // Snapshot should exist after ingest.
+    const before = await prisma.capitalSnapshot.findUnique({
+      where: { userId_periodKey: { userId, periodKey: "2026-Q1" } },
+    });
+    expect(before).not.toBeNull();
+
+    // Delete the DataSource (cascades delete CapitalComponent rows per schema).
+    await prisma.dataSource.delete({ where: { id: dataSource.id } });
+
+    // Recompute finds no components → deletes the snapshot.
+    await recomputeCapitalSnapshot(userId, "2026-Q1");
+    const after = await prisma.capitalSnapshot.findUnique({
+      where: { userId_periodKey: { userId, periodKey: "2026-Q1" } },
+    });
+    expect(after).toBeNull();
+  });
 });
