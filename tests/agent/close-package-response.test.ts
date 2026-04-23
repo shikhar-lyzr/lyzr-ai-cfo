@@ -80,4 +80,23 @@ describe("close_package response handling", { timeout: 30_000 }, () => {
     expect(saved!.body).toContain("# Monthly Close Package — 2026-Q1");
     expect(saved!.body).toContain("Real content here");
   });
+
+  it("calling generateReport twice updates the existing doc, not duplicates", async () => {
+    vi.mocked(query).mockReturnValueOnce(
+      scriptedQuery([deltaMsg("# First draft\n\nInitial body.")]) as ReturnType<typeof query>,
+    );
+    await generateReport(userId, "close_package", "2026-Q1");
+
+    vi.mocked(query).mockReturnValueOnce(
+      scriptedQuery([deltaMsg("# Second draft\n\nUpdated body.")]) as ReturnType<typeof query>,
+    );
+    await generateReport(userId, "close_package", "2026-Q1");
+
+    const all = await prisma.document.findMany({
+      where: { userId, type: "close_package", period: "2026-Q1" },
+    });
+    expect(all).toHaveLength(1);
+    expect(all[0].body).toContain("Updated body");
+    expect(all[0].body).not.toContain("Initial body");
+  });
 });
