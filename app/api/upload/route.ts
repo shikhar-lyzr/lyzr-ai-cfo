@@ -14,6 +14,7 @@ import {
   saveMatchRun,
   userHasBothLedgers,
 } from "@/lib/reconciliation/persist";
+import { ingestCapitalComponents, ingestRwaBreakdown } from "@/lib/capital";
 import { hashCsvText, resolveUploadDedup } from "@/lib/upload/dedup";
 
 export async function POST(request: NextRequest) {
@@ -73,6 +74,29 @@ export async function POST(request: NextRequest) {
     const { dataSource, skipped, periodsTouched } = await ingestSubLedger(userId, file.name, headers, rows, contentHash);
     const runIds = await runAutoMatchSafely(userId, periodsTouched);
     return NextResponse.json({ kind: "sub_ledger", dataSource, skipped: skipped.length, periodsTouched, matchRunIds: runIds });
+  }
+
+  if (shape === "capital_components") {
+    const { dataSource, skipped, periodsTouched } = await ingestCapitalComponents(
+      userId, file.name, headers, rows, contentHash,
+    );
+    return NextResponse.json({
+      kind: "capital_components",
+      dataSource,
+      skipped: skipped.length,
+      periodsTouched,
+    });
+  }
+  if (shape === "rwa_breakdown") {
+    const { dataSource, skipped, periodsTouched } = await ingestRwaBreakdown(
+      userId, file.name, headers, rows, contentHash,
+    );
+    return NextResponse.json({
+      kind: "rwa_breakdown",
+      dataSource,
+      skipped: skipped.length,
+      periodsTouched,
+    });
   }
 
   if (!process.env.OPENAI_API_KEY && !process.env.LYZR_API_KEY && !process.env.GEMINI_API_KEY) {

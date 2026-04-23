@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { buildReconciliationContext } from "./financial-reconciliation";
 import { buildMonthlyCloseContext } from "./monthly-close";
+import { buildCapitalContext } from "./regulatory-capital";
 
 export type JourneyContextBuilder = (userId: string, periodKey: string) => Promise<string>;
 
@@ -16,6 +17,7 @@ export const JOURNEY_TITLES: Record<string, string> = {
 const BUILDERS: Record<string, JourneyContextBuilder> = {
   "financial-reconciliation": buildReconciliationContext,
   "monthly-close": buildMonthlyCloseContext,
+  "regulatory-capital": buildCapitalContext,
 };
 
 export async function buildJourneyContext(
@@ -28,12 +30,20 @@ export async function buildJourneyContext(
   const builder = BUILDERS[journeyId];
   if (builder) {
     let resolvedPeriodKey = periodKey ?? "";
-    if (journeyId === "financial-reconciliation" && !resolvedPeriodKey) {
-      const newest = await prisma.reconPeriod.findFirst({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-      });
-      resolvedPeriodKey = newest?.periodKey ?? "";
+    if (!resolvedPeriodKey) {
+      if (journeyId === "financial-reconciliation") {
+        const newest = await prisma.reconPeriod.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+        });
+        resolvedPeriodKey = newest?.periodKey ?? "";
+      } else if (journeyId === "regulatory-capital") {
+        const newest = await prisma.capitalPeriod.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+        });
+        resolvedPeriodKey = newest?.periodKey ?? "";
+      }
     }
     return builder(userId, resolvedPeriodKey);
   }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Sheet, Loader2 } from "lucide-react";
 
 interface LinkSheetAreaProps {
-  shape: "variance" | "ar" | "gl" | "sub_ledger" | "fx";
+  shape: "variance" | "ar" | "gl" | "sub_ledger" | "fx" | "capital_components" | "rwa_breakdown";
   onLink: (url: string) => Promise<void>;
   isLinking: boolean;
 }
@@ -34,6 +34,8 @@ export function LinkSheetArea({ shape, onLink, isLinking }: LinkSheetAreaProps) 
           ? " Sheet should have columns like Account, Period, Actual, Budget."
           : shape === "ar"
           ? " Sheet should have columns like Invoice #, Customer, Amount, Due Date."
+          : shape === "capital_components" || shape === "rwa_breakdown"
+          ? " Sheet should be a capital components or RWA breakdown export — we auto-detect the shape."
           : " Sheet should be a GL, sub-ledger, or FX-rates export — we auto-detect the shape."}
       </p>
       <div className="flex gap-2">

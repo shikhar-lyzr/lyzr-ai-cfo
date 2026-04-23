@@ -217,7 +217,7 @@ export async function ingestFxRates(
   csvRows: string[][],
   contentHash?: string
 ) {
-  const rates = parseFxRatesCsv(csvHeaders, csvRows);
+  const { rates, skipped } = parseFxRatesCsv(csvHeaders, csvRows);
 
   const dataSource = await prisma.dataSource.create({
     data: {
@@ -266,7 +266,7 @@ export async function ingestFxRates(
     data: { status: "ready", recordCount: rates.length },
   });
 
-  return { dataSource: updated, ratesLoaded: rates.length };
+  return { dataSource: updated, ratesLoaded: rates.length, skipped: skipped.length };
 }
 
 export async function ingestGl(

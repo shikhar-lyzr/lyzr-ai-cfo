@@ -24,6 +24,8 @@ model User {
   matchRuns          MatchRun[]
   journalAdjustments JournalAdjustment[]
   reconPeriods       ReconPeriod[]
+  capitalPeriods     CapitalPeriod[]
+  capitalSnapshots   CapitalSnapshot[]
 }
 
 model DataSource {
@@ -44,6 +46,8 @@ model DataSource {
   documents        Document[]
   glEntries        GLEntry[]
   subLedgerEntries SubLedgerEntry[]
+  capitalComponents CapitalComponent[]
+  rwaLines          RwaLine[]
 
   @@index([userId, contentHash])
 }
@@ -312,4 +316,68 @@ model ReconPeriod {
 
   @@unique([userId, periodKey])
   @@index([userId, createdAt])
+}
+
+model CapitalPeriod {
+  id        String   @id @default(cuid())
+  userId    String
+  periodKey String
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, periodKey])
+  @@index([userId, createdAt])
+}
+
+model CapitalComponent {
+  id           String   @id @default(cuid())
+  dataSourceId String
+  periodKey    String
+  component    String
+  amount       Float
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now())
+
+  dataSource DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+
+  @@index([dataSourceId, periodKey])
+  @@index([periodKey, component])
+}
+
+model RwaLine {
+  id             String   @id @default(cuid())
+  dataSourceId   String
+  periodKey      String
+  riskType       String
+  exposureClass  String
+  exposureAmount Float
+  riskWeight     Float
+  rwa            Float
+  createdAt      DateTime @default(now())
+
+  dataSource DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+
+  @@index([dataSourceId, periodKey])
+  @@index([periodKey, riskType])
+}
+
+model CapitalSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  periodKey    String
+  cet1Ratio    Float
+  tier1Ratio   Float
+  totalRatio   Float
+  cet1Capital  Float
+  tier1Capital Float
+  totalCapital Float
+  totalRwa     Float
+  computedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, periodKey])
+  @@index([userId, computedAt])
 }

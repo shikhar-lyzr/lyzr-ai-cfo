@@ -8,6 +8,7 @@
  */
 
 import { callLlm, extractJson } from "./llm-mapper";
+import { parseDate as sharedParseDate, parseAmount, detectDateFormat } from "./utils";
 
 export interface ParsedInvoice {
   invoiceNumber: string;
@@ -63,48 +64,10 @@ export function autoDetectArColumns(headers: string[]): Record<string, number> {
   return mapping;
 }
 
-/** Parse a date string in YYYY-MM-DD, MM/DD/YYYY, or DD-MMM-YYYY format. */
-export function parseDate(value: string): Date | null {
-  const trimmed = value.trim();
-
-  // YYYY-MM-DD
-  const iso = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (iso) {
-    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
-    if (!isNaN(d.getTime())) return d;
-  }
-
-  // MM/DD/YYYY
-  const mdy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (mdy) {
-    const d = new Date(Number(mdy[3]), Number(mdy[1]) - 1, Number(mdy[2]));
-    if (!isNaN(d.getTime())) return d;
-  }
-
-  // DD-MMM-YYYY (e.g. 15-Jan-2025)
-  const dmy = trimmed.match(/^(\d{1,2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{4})$/i);
-  if (dmy) {
-    const months: Record<string, number> = {
-      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-      jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
-    };
-    const mon = months[dmy[2].toLowerCase()];
-    if (mon !== undefined) {
-      const d = new Date(Number(dmy[3]), mon, Number(dmy[1]));
-      if (!isNaN(d.getTime())) return d;
-    }
-  }
-
-  return null;
-}
-
-/** Parse amount string, stripping $ and commas. */
-function parseAmount(value: string): number | null {
-  const cleaned = value.replace(/[$,\s]/g, "").trim();
-  const num = parseFloat(cleaned);
-  if (isNaN(num)) return null;
-  return num;
-}
+// Re-export parseDate from the shared utils so external importers of
+// `@/lib/csv/ar-parser`'s parseDate (notably ar-parser-dates.test.ts) keep
+// resolving without signature changes.
+export { parseDate } from "./utils";
 
 const REQUIRED_AR_FIELDS = ["invoiceNumber", "customer", "amount", "invoiceDate", "dueDate"] as const;
 
@@ -144,6 +107,14 @@ export async function parseArCsv(
 
   const invoices: ParsedInvoice[] = [];
   const skipped: SkipReason[] = [];
+
+  // Detect date format per date column once, reuse across rows.
+  const invoiceDateFormat = detectDateFormat(
+    rows.map((r) => r[mapping.invoiceDate]).filter(Boolean),
+  );
+  const dueDateFormat = detectDateFormat(
+    rows.map((r) => r[mapping.dueDate]).filter(Boolean),
+  );
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -206,7 +177,7 @@ export async function parseArCsv(
       continue;
     }
 
-    const invoiceDate = parseDate(invoiceDateRaw);
+    const invoiceDate = sharedParseDate(invoiceDateRaw, invoiceDateFormat);
     if (!invoiceDate) {
       skipped.push({
         row: rowNum,
@@ -225,7 +196,7 @@ export async function parseArCsv(
       continue;
     }
 
-    const dueDate = parseDate(dueDateRaw);
+    const dueDate = sharedParseDate(dueDateRaw, dueDateFormat);
     if (!dueDate) {
       skipped.push({
         row: rowNum,
