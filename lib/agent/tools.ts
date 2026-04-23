@@ -231,23 +231,28 @@ export function createFinancialTools(userId: string) {
               headline: { type: "string" },
               detail: { type: "string" },
               driver: { type: "string" },
-              dataSourceId: { type: "string" },
+              dataSourceId: {
+                type: "string",
+                description: "Optional. Link the action to a specific DataSource by its cuid. Omit for actions that span multiple sources (e.g. aggregate variance investigations from the monthly-close page).",
+              },
             },
-            required: ["type", "severity", "headline", "detail", "driver", "dataSourceId"],
+            required: ["type", "severity", "headline", "detail", "driver"],
           },
         },
       },
       required: ["actions"],
     },
     async (args) => {
-      // Type definitions for the tool args
+      // Type definitions for the tool args. dataSourceId is optional — not
+      // every caller can supply one (e.g. chat from /monthly-close operates
+      // on aggregate variance blockers that span multiple DataSources).
       type ToolAction = {
         type: string;
         severity: string;
         headline: string;
         detail: string;
         driver: string;
-        dataSourceId: string;
+        dataSourceId?: string;
       };
 
       const items = (args.actions as ToolAction[]) || [];
@@ -292,7 +297,14 @@ export function createFinancialTools(userId: string) {
         : [];
       const validDsIds = new Set(validDs.map((d) => d.id));
 
-      // Sanitize all records first, skip any with bad data
+      // Sanitize all records first, skip any with bad data.
+      //
+      // dataSourceId handling:
+      //  - absent / empty  → sourceDataSourceId: null (allowed by schema;
+      //    used by aggregate-variance actions from /monthly-close chat
+      //    where no single DataSource underlies the blocker).
+      //  - present + valid → sourceDataSourceId: <id>.
+      //  - present + not in DB → skip the row (LLM may have fabricated an id).
       const validTypes = ["variance", "anomaly", "recommendation"];
       const validSeverities = ["critical", "warning", "info"];
       const sanitized: Array<{
@@ -302,12 +314,15 @@ export function createFinancialTools(userId: string) {
         headline: string;
         detail: string;
         driver: string;
-        sourceDataSourceId: string;
+        sourceDataSourceId: string | null;
       }> = [];
 
       for (const a of newActions) {
-        if (!validDsIds.has(a.dataSourceId)) {
-          console.warn(`[create_actions] Skipping "${a.headline}": invalid dataSourceId "${a.dataSourceId}"`);
+        const supplied = typeof a.dataSourceId === "string" && a.dataSourceId.length > 0
+          ? a.dataSourceId
+          : null;
+        if (supplied !== null && !validDsIds.has(supplied)) {
+          console.warn(`[create_actions] Skipping "${a.headline}": unknown dataSourceId "${supplied}"`);
           continue;
         }
         sanitized.push({
@@ -317,7 +332,7 @@ export function createFinancialTools(userId: string) {
           headline: a.headline,
           detail: a.detail,
           driver: a.driver,
-          sourceDataSourceId: a.dataSourceId,
+          sourceDataSourceId: supplied,
         });
       }
 
