@@ -62,13 +62,96 @@ const BASELINES: Record<Shape, Csv> = {
   },
 };
 
-async function main() {
-  console.log("CSV audit scaffolding loaded.");
-  console.log(`Shapes: ${SHAPES.join(", ")}`);
-  for (const shape of SHAPES) {
-    const b = BASELINES[shape];
-    console.log(`  ${shape}: ${b.headers.length} headers × ${b.rows.length} rows`);
+type Outcome = "PASS" | "PARTIAL" | "FAIL_DETECT" | "FAIL_PARSE" | "N/A";
+
+interface RunResult {
+  outcome: Outcome;
+  rowCount: number;
+  keyField: string | null;
+  error?: string;
+}
+
+// The per-shape key field used by the comparator. For AR it's invoiceNumber
+// on the first parsed invoice; for the ledgers it's reference; etc.
+function keyFieldFor(shape: Shape, parserOutput: unknown): string | null {
+  if (!Array.isArray(parserOutput) && typeof parserOutput !== "object") return null;
+  try {
+    if (shape === "variance") {
+      const rows = parserOutput as Array<{ account?: string }>;
+      return rows[0]?.account ?? null;
+    }
+    if (shape === "ar") {
+      const res = parserOutput as { invoices: Array<{ invoiceNumber?: string }> };
+      return res.invoices[0]?.invoiceNumber ?? null;
+    }
+    if (shape === "gl" || shape === "sub_ledger") {
+      const res = parserOutput as { entries: Array<{ reference?: string }> };
+      return res.entries[0]?.reference ?? null;
+    }
+    if (shape === "fx") {
+      const rates = parserOutput as Array<{ fromCurrency?: string }>;
+      return rates[0]?.fromCurrency ?? null;
+    }
+  } catch {
+    return null;
   }
+  return null;
+}
+
+function parsedRowCount(shape: Shape, parserOutput: unknown): number {
+  if (shape === "variance") return (parserOutput as unknown[]).length;
+  if (shape === "ar") return (parserOutput as { invoices: unknown[] }).invoices.length;
+  if (shape === "gl" || shape === "sub_ledger") return (parserOutput as { entries: unknown[] }).entries.length;
+  if (shape === "fx") return (parserOutput as unknown[]).length;
+  return 0;
+}
+
+async function runShapeOnce(shape: Shape, csv: Csv): Promise<RunResult> {
+  try {
+    let output: unknown;
+    if (shape === "variance") {
+      const mapping = autoDetectColumns(csv.headers);
+      if (mapping.account === undefined || mapping.actual === undefined) {
+        return { outcome: "FAIL_PARSE", rowCount: 0, keyField: null, error: "variance auto-detect failed" };
+      }
+      output = parseRows(csv.rows, mapping);
+    } else if (shape === "ar") {
+      output = await parseArCsv(csv.headers, csv.rows);
+    } else if (shape === "gl") {
+      output = await parseGlCsv(csv.headers, csv.rows, []);
+    } else if (shape === "sub_ledger") {
+      output = await parseSubLedgerCsv(csv.headers, csv.rows, []);
+    } else {
+      output = parseFxRatesCsv(csv.headers, csv.rows);
+    }
+    return {
+      outcome: "PASS",
+      rowCount: parsedRowCount(shape, output),
+      keyField: keyFieldFor(shape, output),
+    };
+  } catch (err) {
+    return {
+      outcome: "FAIL_PARSE",
+      rowCount: 0,
+      keyField: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+async function main() {
+  console.log("=== Baseline verification ===");
+  const baselineResults: Record<Shape, RunResult> = {} as Record<Shape, RunResult>;
+  for (const shape of SHAPES) {
+    const result = await runShapeOnce(shape, BASELINES[shape]);
+    baselineResults[shape] = result;
+    const key = result.keyField ?? "(no key)";
+    console.log(`  ${shape}: ${result.outcome} — ${result.rowCount} rows, first=${key}${result.error ? ` (${result.error})` : ""}`);
+    if (result.outcome !== "PASS") {
+      throw new Error(`Baseline for ${shape} failed: ${result.error}`);
+    }
+  }
+  console.log("All baselines PASS.");
 }
 
 main().catch((err) => {
