@@ -131,4 +131,24 @@ describe("SSE pipeline_step wire", { timeout: 30_000 }, () => {
     expect((running!.data as { label: string }).label).toBe("Searching financial records");
     expect((running!.data as { id: string }).id).toBe((completed!.data as { id: string }).id);
   });
+
+  it("tool_result with isError=true flips the step to failed", async () => {
+    vi.mocked(query).mockReturnValue(
+      scriptedQuery([
+        toolUseMsg("tu-1", "search_records", {}),
+        toolResultMsg("tu-1", "boom", true),
+        deltaMsg("I got an error."),
+      ]) as ReturnType<typeof query>,
+    );
+
+    const res = await POST(makeReq({ userId, message: "search" }));
+    const frames = await readSseFrames(res.body);
+
+    const failedFrame = frames.find(
+      (f) =>
+        f.event === "pipeline_step" &&
+        (f.data as { status: string }).status === "failed",
+    );
+    expect(failedFrame).toBeDefined();
+  });
 });
