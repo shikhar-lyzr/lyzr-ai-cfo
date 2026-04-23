@@ -80,8 +80,12 @@ export function parseCapitalComponents(
   const iAmount = findCol(headers, "amount");
   const iCurrency = findCol(headers, "currency");
 
-  if (iPeriod < 0 || iComponent < 0 || iAmount < 0) {
-    return { components: [], skipped: [] };
+  const missing: string[] = [];
+  if (iPeriod < 0) missing.push("period");
+  if (iComponent < 0) missing.push("component");
+  if (iAmount < 0) missing.push("amount");
+  if (missing.length > 0) {
+    throw new Error(`capital_components CSV missing required headers: ${missing.join(", ")}`);
   }
 
   const components: CapitalComponentRow[] = [];
@@ -90,16 +94,16 @@ export function parseCapitalComponents(
   rows.forEach((row, idx) => {
     const periodRaw = row[iPeriod]?.trim() ?? "";
     if (!PERIOD_PATTERN.test(periodRaw)) {
-      skipped.push({ row: idx, reason: `invalid period "${periodRaw}"` });
+      skipped.push({ row: idx + 2, reason: `invalid period "${periodRaw}"` });
       return;
     }
     const amount = parseAmount(row[iAmount] ?? "");
     if (amount === null) {
-      skipped.push({ row: idx, reason: "unparseable amount" });
+      skipped.push({ row: idx + 2, reason: "unparseable amount" });
       return;
     }
     if (amount < 0) {
-      skipped.push({ row: idx, reason: "negative amount not allowed" });
+      skipped.push({ row: idx + 2, reason: "negative amount not allowed" });
       return;
     }
 
@@ -110,7 +114,7 @@ export function parseCapitalComponents(
     } else {
       component = "other_deduction";
       skipped.push({
-        row: idx,
+        row: idx + 2,
         reason: `unknown component "${row[iComponent]}" — mapped to other_deduction`,
       });
     }
@@ -134,15 +138,15 @@ export function parseRwaBreakdown(
   const iRiskWeight = findCol(headers, "risk_weight", "risk weight", "risk-weight");
   const iRwa = findCol(headers, "rwa");
 
-  if (
-    iPeriod < 0 ||
-    iRiskType < 0 ||
-    iExposureClass < 0 ||
-    iExposureAmount < 0 ||
-    iRiskWeight < 0 ||
-    iRwa < 0
-  ) {
-    return { lines: [], skipped: [] };
+  const missing: string[] = [];
+  if (iPeriod < 0) missing.push("period");
+  if (iRiskType < 0) missing.push("risk_type");
+  if (iExposureClass < 0) missing.push("exposure_class");
+  if (iExposureAmount < 0) missing.push("exposure_amount");
+  if (iRiskWeight < 0) missing.push("risk_weight");
+  if (iRwa < 0) missing.push("rwa");
+  if (missing.length > 0) {
+    throw new Error(`rwa_breakdown CSV missing required headers: ${missing.join(", ")}`);
   }
 
   const lines: RwaLineRow[] = [];
@@ -151,13 +155,13 @@ export function parseRwaBreakdown(
   rows.forEach((row, idx) => {
     const periodRaw = row[iPeriod]?.trim() ?? "";
     if (!PERIOD_PATTERN.test(periodRaw)) {
-      skipped.push({ row: idx, reason: `invalid period "${periodRaw}"` });
+      skipped.push({ row: idx + 2, reason: `invalid period "${periodRaw}"` });
       return;
     }
 
     const riskTypeRaw = (row[iRiskType] ?? "").trim().toLowerCase();
     if (!(KNOWN_RISK_TYPES as readonly string[]).includes(riskTypeRaw)) {
-      skipped.push({ row: idx, reason: `unknown risk_type "${row[iRiskType]}"` });
+      skipped.push({ row: idx + 2, reason: `unknown risk_type "${row[iRiskType]}"` });
       return;
     }
 
@@ -165,11 +169,11 @@ export function parseRwaBreakdown(
     const riskWeight = parseRiskWeight(row[iRiskWeight] ?? "");
     const rwa = parseAmount(row[iRwa] ?? "");
     if (exposureAmount === null || riskWeight === null || rwa === null) {
-      skipped.push({ row: idx, reason: "unparseable numeric field" });
+      skipped.push({ row: idx + 2, reason: "unparseable numeric field" });
       return;
     }
     if (exposureAmount < 0 || rwa < 0) {
-      skipped.push({ row: idx, reason: "negative amount not allowed" });
+      skipped.push({ row: idx + 2, reason: "negative amount not allowed" });
       return;
     }
 

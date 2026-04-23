@@ -45,7 +45,7 @@ describe("parseCapitalComponents", () => {
     expect(out.components[0].component).toBe("other_deduction");
     expect(out.skipped).toHaveLength(1);
     expect(out.skipped[0]).toMatchObject({
-      row: 0,
+      row: 2,
       reason: expect.stringContaining("unknown component"),
     });
   });
@@ -95,6 +95,12 @@ describe("parseCapitalComponents", () => {
     expect(KNOWN_COMPONENTS).toContain("cet1_capital");
     expect(KNOWN_COMPONENTS).toContain("total_rwa");
     expect(KNOWN_COMPONENTS).toContain("goodwill");
+  });
+
+  it("throws when required headers are missing", () => {
+    expect(() => parseCapitalComponents(["foo", "bar"], [])).toThrow(
+      /missing required headers/,
+    );
   });
 });
 
@@ -152,5 +158,11 @@ describe("parseRwaBreakdown", () => {
     const rows = [["2026-Q1", "credit", "corp", "100", "1.0", "100"]];
     const out = parseRwaBreakdown(headerVariants, rows);
     expect(out.lines).toHaveLength(1);
+  });
+
+  it("throws when required headers are missing", () => {
+    expect(() => parseRwaBreakdown(["period", "rwa"], [])).toThrow(
+      /missing required headers/,
+    );
   });
 });
