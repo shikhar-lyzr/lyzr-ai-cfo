@@ -99,4 +99,22 @@ describe("close_package response handling", { timeout: 30_000 }, () => {
     expect(all[0].body).toContain("Updated body");
     expect(all[0].body).not.toContain("Initial body");
   });
+
+  it("throws and does not persist on empty LLM response", async () => {
+    vi.mocked(query).mockReturnValue(scriptedQuery([deltaMsg("   \n\n   ")]) as ReturnType<typeof query>);
+
+    await expect(generateReport(userId, "close_package", "2026-Q1")).rejects.toThrow(
+      /empty body/i,
+    );
+
+    const docs = await prisma.document.findMany({
+      where: { userId, type: "close_package" },
+    });
+    expect(docs).toHaveLength(0);
+  });
+
+  it("throws without calling query when period is omitted", async () => {
+    await expect(generateReport(userId, "close_package")).rejects.toThrow(/period/i);
+    expect(vi.mocked(query)).not.toHaveBeenCalled();
+  });
 });
