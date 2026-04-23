@@ -139,6 +139,100 @@ async function runShapeOnce(shape: Shape, csv: Csv): Promise<RunResult> {
   }
 }
 
+interface Variant {
+  id: string;
+  category: "A" | "B";
+  description: string;
+  // null return means "not applicable to this shape"
+  apply: (shape: Shape, csv: Csv) => Csv | null;
+}
+
+// Per-shape synonym rename map used by variant A2.
+const A2_SYNONYMS: Record<Shape, Record<string, string>> = {
+  variance:   { account: "line_item", actual: "spent", budget: "plan" },
+  ar:         { invoice_number: "inv_no", customer: "client", due_date: "payment_due" },
+  gl:         { entry_date: "date", amount: "amt", debit_credit: "dr_cr" },
+  sub_ledger: { entry_date: "date", amount: "amt", source_module: "module" },
+  fx:         { from_currency: "from", to_currency: "to", as_of: "date" },
+};
+
+// Per-shape optional column to drop for A6.
+const A6_DROP_COL: Partial<Record<Shape, string>> = {
+  variance:   "category",       // optional per lib/csv/llm-mapper.ts#ALL_FIELDS
+  ar:         "customer_email", // optional in ar-parser.ts autoDetect
+  gl:         "memo",           // iMemo >= 0 check makes this optional
+  sub_ledger: "memo",
+  // fx has no optional columns in fx-rates-parser.ts
+};
+
+const HEADER_VARIANTS: Variant[] = [
+  {
+    id: "A1",
+    category: "A",
+    description: "Swap column order (reverse)",
+    apply: (_shape, csv) => ({
+      headers: [...csv.headers].reverse(),
+      rows: csv.rows.map((r) => [...r].reverse()),
+    }),
+  },
+  {
+    id: "A2",
+    category: "A",
+    description: "Rename with synonym",
+    apply: (shape, csv) => {
+      const map = A2_SYNONYMS[shape];
+      return {
+        headers: csv.headers.map((h) => map[h] ?? h),
+        rows: csv.rows,
+      };
+    },
+  },
+  {
+    id: "A3",
+    category: "A",
+    description: "Uppercase headers",
+    apply: (_shape, csv) => ({
+      headers: csv.headers.map((h) => h.toUpperCase()),
+      rows: csv.rows,
+    }),
+  },
+  {
+    id: "A4",
+    category: "A",
+    description: "Whitespace + title-case (underscores -> spaces)",
+    apply: (_shape, csv) => ({
+      headers: csv.headers.map((h) =>
+        h.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      ),
+      rows: csv.rows,
+    }),
+  },
+  {
+    id: "A5",
+    category: "A",
+    description: "Add irrelevant extra column 'Notes'",
+    apply: (_shape, csv) => ({
+      headers: [...csv.headers, "Notes"],
+      rows: csv.rows.map((r) => [...r, "see appendix"]),
+    }),
+  },
+  {
+    id: "A6",
+    category: "A",
+    description: "Drop one optional column",
+    apply: (shape, csv) => {
+      const col = A6_DROP_COL[shape];
+      if (!col) return null;
+      const idx = csv.headers.indexOf(col);
+      if (idx < 0) return null;
+      return {
+        headers: csv.headers.filter((_, i) => i !== idx),
+        rows: csv.rows.map((r) => r.filter((_, i) => i !== idx)),
+      };
+    },
+  },
+];
+
 async function main() {
   console.log("=== Baseline verification ===");
   const baselineResults: Record<Shape, RunResult> = {} as Record<Shape, RunResult>;
@@ -152,6 +246,16 @@ async function main() {
     }
   }
   console.log("All baselines PASS.");
+
+  console.log("\n=== Header variant preview (first shape: gl) ===");
+  for (const v of HEADER_VARIANTS) {
+    const mutated = v.apply("gl", BASELINES.gl);
+    if (mutated === null) {
+      console.log(`  ${v.id} ${v.description}: N/A for gl`);
+    } else {
+      console.log(`  ${v.id} ${v.description}: headers=[${mutated.headers.slice(0, 3).join(", ")}, …]`);
+    }
+  }
 }
 
 main().catch((err) => {
