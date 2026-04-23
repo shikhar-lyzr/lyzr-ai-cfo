@@ -27,11 +27,15 @@ export function detectFastPath(headers: string[]): CsvShape {
   const joined = headers.map((h) => h.toLowerCase()).join(" | ");
 
   // FX-rates: from_currency + to_currency + rate
-  if (/from[_\s-]?currency/i.test(joined) && /to[_\s-]?currency/i.test(joined) && /\brate\b/i.test(joined)) return "fx";
+  if (
+    (/from[_\s-]?currency|(^|\|)\s*from\s*($|\|)|\bbase[_\s-]?currency\b/i.test(joined)) &&
+    (/to[_\s-]?currency|(^|\|)\s*to\s*($|\|)|\bquote[_\s-]?currency\b/i.test(joined)) &&
+    /\brate\b/i.test(joined)
+  ) return "fx";
 
   // GL and sub-ledger have unique header signals — check first.
-  if (/debit[_\s-]?credit/i.test(joined)) return "gl";
-  if (/source[_\s-]?module/i.test(joined)) return "sub_ledger";
+  if (/debit[_\s-]?credit|\bdr[_\s/-]?cr\b|\bdr\s*\/\s*cr\b/i.test(joined)) return "gl";
+  if (/source[_\s-]?module|(^|\|)\s*module\s*($|\|)/i.test(joined)) return "sub_ledger";
 
   // Capital-flow shapes. risk_type is the most-specific RWA signal, so it
   // wins over capital_components in the ambiguous case.
