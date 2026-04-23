@@ -233,6 +233,129 @@ const HEADER_VARIANTS: Variant[] = [
   },
 ];
 
+// Per-shape index lookups for content variants. Each value is the header
+// name for the column. `null` means the shape doesn't have that column.
+const DATE_COL: Record<Shape, string | null> = {
+  variance:   null,           // period is "2026-04" style, not a date-parsed column
+  ar:         "invoice_date",
+  gl:         "entry_date",
+  sub_ledger: "entry_date",
+  fx:         "as_of",
+};
+
+const AMOUNT_COL: Record<Shape, string | null> = {
+  variance:   "actual",
+  ar:         "amount",
+  gl:         "amount",
+  sub_ledger: "amount",
+  fx:         "rate",
+};
+
+function mutateColumn(
+  csv: Csv,
+  colName: string,
+  fn: (cell: string) => string,
+): Csv {
+  const idx = csv.headers.indexOf(colName);
+  if (idx < 0) return csv;
+  return {
+    headers: csv.headers,
+    rows: csv.rows.map((r) => r.map((cell, i) => (i === idx ? fn(cell) : cell))),
+  };
+}
+
+// Convert an ISO date string (YYYY-MM-DD) to another format. Returns the
+// input unchanged if it doesn't look like ISO (e.g., variance's "2026-04").
+function toUsDate(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : iso;
+}
+function toEuDate(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+function toNamedMonth(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${Number(m[3])} ${months[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+const CONTENT_VARIANTS: Variant[] = [
+  {
+    id: "B1",
+    category: "B",
+    description: "Date format: ISO -> US (MM/DD/YYYY)",
+    apply: (shape, csv) => {
+      const col = DATE_COL[shape];
+      return col ? mutateColumn(csv, col, toUsDate) : null;
+    },
+  },
+  {
+    id: "B2",
+    category: "B",
+    description: "Date format: ISO -> EU (DD/MM/YYYY)",
+    apply: (shape, csv) => {
+      const col = DATE_COL[shape];
+      return col ? mutateColumn(csv, col, toEuDate) : null;
+    },
+  },
+  {
+    id: "B3",
+    category: "B",
+    description: "Date format: named month (15 Apr 2026)",
+    apply: (shape, csv) => {
+      const col = DATE_COL[shape];
+      return col ? mutateColumn(csv, col, toNamedMonth) : null;
+    },
+  },
+  {
+    id: "B4",
+    category: "B",
+    description: "Amount with thousands separator (1,234.56)",
+    apply: (shape, csv) => {
+      const col = AMOUNT_COL[shape];
+      if (!col) return null;
+      return mutateColumn(csv, col, (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return v;
+        return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      });
+    },
+  },
+  {
+    id: "B5",
+    category: "B",
+    description: "Amount with accounting parens for negatives ((500.00))",
+    apply: (shape, csv) => {
+      const col = AMOUNT_COL[shape];
+      if (!col) return null;
+      // Only rewrite the first row's amount — enough to exercise the parser path.
+      const idx = csv.headers.indexOf(col);
+      if (idx < 0) return null;
+      const newRows = csv.rows.map((r, i) => {
+        if (i !== 0) return r;
+        const n = Number(r[idx]);
+        return r.map((cell, j) =>
+          j === idx && Number.isFinite(n) ? `(${Math.abs(n).toFixed(2)})` : cell,
+        );
+      });
+      return { headers: csv.headers, rows: newRows };
+    },
+  },
+  {
+    id: "B6",
+    category: "B",
+    description: "Amount with currency-symbol prefix ($1234.56)",
+    apply: (shape, csv) => {
+      const col = AMOUNT_COL[shape];
+      return col ? mutateColumn(csv, col, (v) => `$${v}`) : null;
+    },
+  },
+];
+
+const ALL_VARIANTS: Variant[] = [...HEADER_VARIANTS, ...CONTENT_VARIANTS];
+
 async function main() {
   console.log("=== Baseline verification ===");
   const baselineResults: Record<Shape, RunResult> = {} as Record<Shape, RunResult>;
@@ -247,13 +370,14 @@ async function main() {
   }
   console.log("All baselines PASS.");
 
-  console.log("\n=== Header variant preview (first shape: gl) ===");
-  for (const v of HEADER_VARIANTS) {
+  console.log("\n=== Variant preview (first shape: gl) ===");
+  for (const v of ALL_VARIANTS) {
     const mutated = v.apply("gl", BASELINES.gl);
     if (mutated === null) {
       console.log(`  ${v.id} ${v.description}: N/A for gl`);
     } else {
-      console.log(`  ${v.id} ${v.description}: headers=[${mutated.headers.slice(0, 3).join(", ")}, …]`);
+      const sampleRow = mutated.rows[0];
+      console.log(`  ${v.id} ${v.description}: row0=[${sampleRow.slice(0, 3).join(", ")}, …]`);
     }
   }
 }
