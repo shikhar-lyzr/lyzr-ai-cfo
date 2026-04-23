@@ -500,9 +500,24 @@ Task progress: ${JSON.stringify(tasks)}`;
 
     const cleanBody = sanitizeReportBody(body);
     const title = `Close Package — ${period}`;
-    await prisma.document.create({
-      data: { userId, type, title, body: cleanBody, period },
+    // A close package is period-scoped: one per (userId, type, period).
+    // Regenerate updates the existing row in-place rather than producing a
+    // duplicate — no unique constraint on Document(period), so upsert is
+    // app-level.
+    const existing = await prisma.document.findFirst({
+      where: { userId, type, period },
+      select: { id: true },
     });
+    if (existing) {
+      await prisma.document.update({
+        where: { id: existing.id },
+        data: { title, body: cleanBody },
+      });
+    } else {
+      await prisma.document.create({
+        data: { userId, type, title, body: cleanBody, period },
+      });
+    }
     return cleanBody;
   }
 
