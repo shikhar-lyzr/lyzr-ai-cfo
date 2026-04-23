@@ -41,4 +41,57 @@ describe("close-readiness upload integration", { timeout: 30_000 }, () => {
     expect(tasks[1].isEmpty).toBe(true); // gl
     expect(tasks[2].total).toBe(1); // variance (special: total always 1)
   });
+
+  it("GL upload only populates GL task card but matchRate stays 0", async () => {
+    // Seed a GL DataSource + 10 unmatched entries + a MatchRun with matched=0
+    const gl = await prisma.dataSource.create({
+      data: { userId, type: "gl", name: "test-gl.csv", status: "ready" },
+    });
+    await prisma.gLEntry.createMany({
+      data: Array.from({ length: 10 }, (_, i) => ({
+        dataSourceId: gl.id,
+        periodKey: "2026-04",
+        entryDate: new Date("2026-04-15"),
+        postingDate: new Date("2026-04-15"),
+        account: "2100",
+        reference: `INV-${i}`,
+        amount: 100,
+        txnCurrency: "USD",
+        baseAmount: 100,
+        debitCredit: "DR",
+        counterparty: "Acme",
+        matchStatus: "unmatched",
+      })),
+    });
+    await prisma.matchRun.create({
+      data: {
+        userId,
+        periodKey: "2026-04",
+        triggeredBy: "upload",
+        strategyConfig: {},
+        totalGL: 10,
+        totalSub: 0,
+        matched: 0,
+        partial: 0,
+        unmatched: 10,
+        completedAt: new Date(),
+      },
+    });
+
+    const readiness = await getCloseReadiness(userId, "2026-04");
+    expect(readiness.hasData).toBe(true);
+    if (readiness.hasData) {
+      expect(readiness.signals.matchRate).toBe(0);
+      // sub_ledger + variance missing -> 2/3
+      expect(readiness.signals.freshnessPenalty).toBeCloseTo(2 / 3, 5);
+    }
+
+    const tasks = await deriveTaskCounts(userId, "2026-04");
+    // tasks[1] is the GL card
+    expect(tasks[1].isEmpty).toBe(false);
+    expect(tasks[1].total).toBe(10);
+    expect(tasks[1].completed).toBe(0);
+    // sub-ledger still empty
+    expect(tasks[0].isEmpty).toBe(true);
+  });
 });
