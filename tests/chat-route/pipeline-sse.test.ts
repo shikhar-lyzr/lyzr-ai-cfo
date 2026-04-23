@@ -186,4 +186,21 @@ describe("SSE pipeline_step wire", { timeout: 30_000 }, () => {
     // Running ids are distinct
     expect(runningIds.size).toBe(2);
   });
+
+  it("orphan tool_result without preceding tool_use emits no pipeline_step", async () => {
+    vi.mocked(query).mockReturnValue(
+      scriptedQuery([
+        toolResultMsg("tu-ghost", "stray"),
+        deltaMsg("Hmm."),
+      ]) as ReturnType<typeof query>,
+    );
+
+    const res = await POST(makeReq({ userId, message: "test" }));
+    const frames = await readSseFrames(res.body);
+
+    const nonStep0 = frames.filter(
+      (f) => f.event === "pipeline_step" && (f.data as { id: string }).id !== "step-0",
+    );
+    expect(nonStep0).toHaveLength(0);
+  });
 });
