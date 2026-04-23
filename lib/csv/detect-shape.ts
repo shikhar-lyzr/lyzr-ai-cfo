@@ -7,7 +7,7 @@
 
 import { inferCsvShape } from "./llm-mapper";
 
-export type CsvShape = "variance" | "ar" | "gl" | "sub_ledger" | "fx" | "unknown";
+export type CsvShape = "variance" | "ar" | "gl" | "sub_ledger" | "fx" | "capital_components" | "rwa_breakdown" | "unknown";
 
 /**
  * Classify a CSV by its headers.
@@ -32,6 +32,16 @@ export function detectFastPath(headers: string[]): CsvShape {
   // GL and sub-ledger have unique header signals — check first.
   if (/debit[_\s-]?credit/i.test(joined)) return "gl";
   if (/source[_\s-]?module/i.test(joined)) return "sub_ledger";
+
+  // Capital-flow shapes. risk_type is the most-specific RWA signal, so it
+  // wins over capital_components in the ambiguous case.
+  const hasRiskType = /risk[_\s-]?type/i.test(joined);
+  if (hasRiskType) return "rwa_breakdown";
+
+  const hasComponent = /\bcomponent\b/i.test(joined);
+  const hasAmountCol = /\bamount\b/i.test(joined);
+  const hasPeriod = /\bperiod\b/i.test(joined);
+  if (hasComponent && hasAmountCol && hasPeriod) return "capital_components";
 
   const hasInvoice = /invoice|inv[_\s-]?(no|num|number|id)/i.test(joined);
   const hasDueDate = /due[_\s-]?date|payment[_\s-]?due/i.test(joined);
