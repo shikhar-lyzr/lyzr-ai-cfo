@@ -225,4 +225,77 @@ describe("close-readiness upload integration", { timeout: 30_000 }, () => {
     const missingSource = blockers.filter((b) => b.kind === "missing_source");
     expect(missingSource).toHaveLength(0);
   });
+
+  it("quarterly periodKey aggregates monthly MatchRuns", async () => {
+    const gl = await prisma.dataSource.create({
+      data: { userId, type: "gl", name: "test-gl.csv", status: "ready" },
+    });
+    const sub = await prisma.dataSource.create({
+      data: { userId, type: "sub_ledger", name: "test-sub.csv", status: "ready" },
+    });
+    // Three monthly runs, each with 6 matched pairs (100% rate per month)
+    const monthlyKeys = ["2026-01", "2026-02", "2026-03"] as const;
+    for (const periodKey of monthlyKeys) {
+      await prisma.matchRun.create({
+        data: {
+          userId,
+          periodKey,
+          triggeredBy: "upload",
+          strategyConfig: {},
+          totalGL: 6,
+          totalSub: 6,
+          matched: 6,
+          partial: 0,
+          unmatched: 0,
+          completedAt: new Date(),
+        },
+      });
+    }
+    // GL/Sub entries stamped with monthly periodKey so task-count queries see them
+    for (const periodKey of monthlyKeys) {
+      await prisma.gLEntry.createMany({
+        data: Array.from({ length: 6 }, (_, i) => ({
+          dataSourceId: gl.id,
+          periodKey,
+          entryDate: new Date(`${periodKey}-15`),
+          postingDate: new Date(`${periodKey}-15`),
+          account: "2100",
+          reference: `${periodKey}-INV-${i}`,
+          amount: 100,
+          txnCurrency: "USD",
+          baseAmount: 100,
+          debitCredit: "DR",
+          counterparty: "X",
+          matchStatus: "matched",
+        })),
+      });
+      await prisma.subLedgerEntry.createMany({
+        data: Array.from({ length: 6 }, (_, i) => ({
+          dataSourceId: sub.id,
+          sourceModule: "AP",
+          periodKey,
+          entryDate: new Date(`${periodKey}-15`),
+          account: "2100",
+          reference: `${periodKey}-INV-${i}`,
+          amount: 100,
+          txnCurrency: "USD",
+          baseAmount: 100,
+          counterparty: "X",
+          matchStatus: "matched",
+        })),
+      });
+    }
+
+    const readiness = await getCloseReadiness(userId, "2026-Q1");
+    expect(readiness.hasData).toBe(true);
+    if (readiness.hasData) {
+      // 3 * 6 * 2 pairs / (3 * 12 entries) = 36/36 = 1.0
+      expect(readiness.signals.matchRate).toBe(1);
+    }
+
+    const tasks = await deriveTaskCounts(userId, "2026-Q1");
+    // GL card should aggregate: 18 entries total (6 per month * 3 months), all matched
+    expect(tasks[1].total).toBe(18);
+    expect(tasks[1].completed).toBe(18);
+  });
 });
