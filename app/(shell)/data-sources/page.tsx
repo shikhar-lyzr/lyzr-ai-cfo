@@ -8,7 +8,7 @@ import { LinkSheetArea } from "@/components/data-sources/link-sheet-area";
 import { SourceList } from "@/components/data-sources/source-list";
 import type { DataSource } from "@/lib/types";
 
-type TabShape = "variance" | "ar" | "reconciliation";
+type TabShape = "variance" | "ar" | "reconciliation" | "capital";
 
 export default function DataSourcesPage() {
   return (
@@ -28,7 +28,7 @@ function DataSourcesPageInner() {
   const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabShape>(() => {
     const tab = searchParams.get("tab");
-    if (tab === "reconciliation" || tab === "ar") return tab;
+    if (tab === "reconciliation" || tab === "ar" || tab === "capital") return tab;
     return "variance";
   });
 
@@ -61,6 +61,9 @@ function DataSourcesPageInner() {
   const filteredSources = sources.filter((s) => {
     if (activeTab === "reconciliation") {
       return s.type === "gl" || s.type === "sub_ledger" || s.type === "fx";
+    }
+    if (activeTab === "capital") {
+      return s.type === "capital_components" || s.type === "rwa_breakdown";
     }
     try {
       const meta = typeof s.metadata === "string" ? JSON.parse(s.metadata) : s.metadata;
@@ -119,6 +122,14 @@ function DataSourcesPageInner() {
           setTimeout(() => router.push("/financial-reconciliation"), 1500);
           return;
         }
+        // Capital shapes: redirect to the regulatory-capital page
+        if (result.kind === "capital_components" || result.kind === "rwa_breakdown") {
+          const kindLabel = result.kind === "capital_components" ? "capital components" : "RWA breakdown";
+          setUploadResult(`${kindLabel} uploaded. ${result.dataSource?.recordCount ?? 0} records ingested. Redirecting…`);
+          fetchSources();
+          setTimeout(() => router.push("/regulatory-capital"), 1500);
+          return;
+        }
         const mappingNote =
           result.mappingSource === "llm"
             ? " (columns mapped by AI — non-standard headers detected)"
@@ -148,7 +159,12 @@ function DataSourcesPageInner() {
     setIsLinking(true);
     setUploadResult(null);
     try {
-      const shapeForApi = activeTab === "reconciliation" ? "gl" : activeTab;
+      const shapeForApi: "variance" | "ar" | "gl" | "capital_components" =
+        activeTab === "reconciliation"
+          ? "gl"
+          : activeTab === "capital"
+            ? "capital_components"
+            : activeTab;
       const res = await fetch("/api/data-sources/link-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,7 +205,7 @@ function DataSourcesPageInner() {
 
         {/* Tabs */}
         <div className="flex border-b border-border">
-          {(["variance", "ar", "reconciliation"] as const).map((tab) => (
+          {(["variance", "ar", "reconciliation", "capital"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => {
@@ -203,7 +219,13 @@ function DataSourcesPageInner() {
                   : "border-transparent text-text-secondary hover:text-text-primary"
               )}
             >
-              {tab === "variance" ? "Variance / P&L" : tab === "ar" ? "AR / Invoices" : "Reconciliation"}
+              {tab === "variance"
+                ? "Variance / P&L"
+                : tab === "ar"
+                  ? "AR / Invoices"
+                  : tab === "reconciliation"
+                    ? "Reconciliation"
+                    : "Regulatory Capital"}
             </button>
           ))}
         </div>
@@ -216,11 +238,19 @@ function DataSourcesPageInner() {
             hint={
               activeTab === "reconciliation"
                 ? "Upload a GL CSV, sub-ledger CSV, or FX-rates CSV — we auto-detect the shape"
-                : undefined
+                : activeTab === "capital"
+                  ? "Upload a capital components CSV or RWA breakdown CSV — we auto-detect the shape"
+                  : undefined
             }
           />
           <LinkSheetArea
-            shape={activeTab === "reconciliation" ? "gl" : activeTab}
+            shape={
+              activeTab === "reconciliation"
+                ? "gl"
+                : activeTab === "capital"
+                  ? "capital_components"
+                  : activeTab
+            }
             onLink={handleLink}
             isLinking={isLinking}
           />

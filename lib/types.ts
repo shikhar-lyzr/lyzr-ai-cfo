@@ -1,7 +1,7 @@
 export type ActionType = "variance" | "anomaly" | "recommendation" | "ar_followup";
 export type Severity = "critical" | "warning" | "info";
 export type ActionStatus = "pending" | "flagged" | "dismissed" | "approved";
-export type DataSourceType = "csv" | "sheets" | "gl" | "sub_ledger" | "fx";
+export type DataSourceType = "csv" | "sheets" | "gl" | "sub_ledger" | "fx" | "capital_components" | "rwa_breakdown";
 export type DataSourceStatus = "processing" | "ready" | "error";
 export type DocumentType = "variance_report" | "ar_summary";
 export type MessageRole = "user" | "agent";
