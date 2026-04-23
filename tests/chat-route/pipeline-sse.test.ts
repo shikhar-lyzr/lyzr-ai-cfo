@@ -151,4 +151,39 @@ describe("SSE pipeline_step wire", { timeout: 30_000 }, () => {
     );
     expect(failedFrame).toBeDefined();
   });
+
+  it("two tool calls produce four distinct pipeline_step frames with matching ids", async () => {
+    vi.mocked(query).mockReturnValue(
+      scriptedQuery([
+        toolUseMsg("tu-1", "search_records", {}),
+        toolResultMsg("tu-1", "r1"),
+        toolUseMsg("tu-2", "analyze_financial_data", {}),
+        toolResultMsg("tu-2", "r2"),
+        deltaMsg("Done."),
+      ]) as ReturnType<typeof query>,
+    );
+
+    const res = await POST(makeReq({ userId, message: "do both" }));
+    const frames = await readSseFrames(res.body);
+
+    // Exclude step-0 frames
+    const tool = frames.filter(
+      (f) => f.event === "pipeline_step" && (f.data as { id: string }).id !== "step-0",
+    );
+    // 2 running + 2 completed
+    expect(tool.length).toBe(4);
+
+    const running = tool.filter((f) => (f.data as { status: string }).status === "running");
+    const completed = tool.filter((f) => (f.data as { status: string }).status === "completed");
+    expect(running).toHaveLength(2);
+    expect(completed).toHaveLength(2);
+
+    // Each completed id matches a running id
+    const runningIds = new Set(running.map((f) => (f.data as { id: string }).id));
+    for (const c of completed) {
+      expect(runningIds.has((c.data as { id: string }).id)).toBe(true);
+    }
+    // Running ids are distinct
+    expect(runningIds.size).toBe(2);
+  });
 });
