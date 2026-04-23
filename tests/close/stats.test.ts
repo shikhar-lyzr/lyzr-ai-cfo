@@ -47,26 +47,43 @@ describe("getCloseReadiness", () => {
     expect(res.hasData).toBe(false);
   });
 
-  it("freshnessPenalty is 0 when user has gl + sub_ledger + variance sources (prod type names)", async () => {
+  it("freshnessPenalty is 0 when user has gl + sub_ledger sources + variance FinancialRecords for the period", async () => {
     mocked.matchRun.findMany.mockResolvedValue([
       { id: "r1", periodKey: "2026-04", matched: 50, totalGL: 50, totalSub: 50, startedAt: new Date() },
     ]);
     mocked.break.findMany.mockResolvedValue([]);
-    // Real DataSource.type values as written by ingestGl/ingestSubLedger and
-    // the variance CSV flow. Historical bug: REQUIRED_SOURCE_TYPES was
-    // spelled "subledger" (no underscore) so this mapping never matched and
-    // freshness penalty was stuck at 0.667 even when all three sources were
-    // present.
+    // The variance CSV upload path writes DataSource.type="csv" and records
+    // the shape in metadata, but stats.ts's freshness check cannot see
+    // metadata. The right signal for "does the user have variance data for
+    // this period?" is whether FinancialRecord rows exist for that period.
     mocked.dataSource.findMany.mockResolvedValue([
       { type: "gl" },
       { type: "sub_ledger" },
-      { type: "variance" },
+    ]);
+    mocked.financialRecord.findMany.mockResolvedValue([
+      { category: "OpEx", account: "Marketing", actual: 14200, budget: 11500 },
+    ]);
+    const res = await getCloseReadiness("u1", "2026-04");
+    expect(res.hasData).toBe(true);
+    if (res.hasData) {
+      expect(res.signals.freshnessPenalty).toBe(0);
+    }
+  });
+
+  it("freshnessPenalty is 1/3 when gl + sub_ledger present but no variance FinancialRecords", async () => {
+    mocked.matchRun.findMany.mockResolvedValue([
+      { id: "r1", periodKey: "2026-04", matched: 50, totalGL: 50, totalSub: 50, startedAt: new Date() },
+    ]);
+    mocked.break.findMany.mockResolvedValue([]);
+    mocked.dataSource.findMany.mockResolvedValue([
+      { type: "gl" },
+      { type: "sub_ledger" },
     ]);
     mocked.financialRecord.findMany.mockResolvedValue([]);
     const res = await getCloseReadiness("u1", "2026-04");
     expect(res.hasData).toBe(true);
     if (res.hasData) {
-      expect(res.signals.freshnessPenalty).toBe(0);
+      expect(res.signals.freshnessPenalty).toBeCloseTo(1 / 3, 5);
     }
   });
 
