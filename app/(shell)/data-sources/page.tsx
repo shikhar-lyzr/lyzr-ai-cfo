@@ -127,7 +127,7 @@ function DataSourcesPageInner() {
           result.analysisStatus === "processing"
             ? " AI is analyzing in the background — actions will appear on the dashboard shortly."
             : ` Generated ${result.actionsGenerated} actions.`;
-        const redirectPath = activeTab === "ar" ? "/ar-followups" : "/";
+        const redirectPath = activeTab === "ar" ? "/actions" : "/";
         setUploadResult(
           `Processed ${result.dataSource.recordCount} records.${analysisNote}${mappingNote} Redirecting...`
         );
