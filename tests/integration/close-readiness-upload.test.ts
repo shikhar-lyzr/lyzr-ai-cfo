@@ -163,4 +163,66 @@ describe("close-readiness upload integration", { timeout: 30_000 }, () => {
     expect(tasks[0].total).toBe(10);
     expect(tasks[0].completed).toBe(10);
   });
+
+  it("variance FinancialRecords present: no missing-variance blocker, freshness=0", async () => {
+    const gl = await prisma.dataSource.create({
+      data: { userId, type: "gl", name: "test-gl.csv", status: "ready" },
+    });
+    const sub = await prisma.dataSource.create({
+      data: { userId, type: "sub_ledger", name: "test-sub.csv", status: "ready" },
+    });
+    // Variance CSVs are uploaded as type="csv" with shape stashed in metadata.
+    // The freshness check must key off FinancialRecord presence, not DataSource.type.
+    const varianceDs = await prisma.dataSource.create({
+      data: {
+        userId,
+        type: "csv",
+        name: "budget-2026-04.csv",
+        status: "ready",
+        metadata: JSON.stringify({ shape: "variance" }),
+      },
+    });
+    await prisma.financialRecord.createMany({
+      data: [
+        { dataSourceId: varianceDs.id, account: "Marketing", period: "2026-04", actual: 14200, budget: 11500, category: "OpEx" },
+        { dataSourceId: varianceDs.id, account: "R&D",       period: "2026-04", actual: 15600, budget: 12000, category: "OpEx" },
+      ],
+    });
+    // Minimal entries so the run is seen
+    await prisma.gLEntry.create({
+      data: {
+        dataSourceId: gl.id, periodKey: "2026-04",
+        entryDate: new Date("2026-04-15"), postingDate: new Date("2026-04-15"),
+        account: "2100", reference: "INV-1",
+        amount: 100, txnCurrency: "USD", baseAmount: 100,
+        debitCredit: "DR", counterparty: "X", matchStatus: "matched",
+      },
+    });
+    await prisma.subLedgerEntry.create({
+      data: {
+        dataSourceId: sub.id, sourceModule: "AP", periodKey: "2026-04",
+        entryDate: new Date("2026-04-15"),
+        account: "2100", reference: "INV-1",
+        amount: 100, txnCurrency: "USD", baseAmount: 100,
+        counterparty: "X", matchStatus: "matched",
+      },
+    });
+    await prisma.matchRun.create({
+      data: {
+        userId, periodKey: "2026-04", triggeredBy: "upload", strategyConfig: {},
+        totalGL: 1, totalSub: 1, matched: 1, partial: 0, unmatched: 0,
+        completedAt: new Date(),
+      },
+    });
+
+    const readiness = await getCloseReadiness(userId, "2026-04");
+    expect(readiness.hasData).toBe(true);
+    if (readiness.hasData) {
+      expect(readiness.signals.freshnessPenalty).toBe(0);
+    }
+
+    const blockers = await getCloseBlockers(userId, "2026-04");
+    const missingSource = blockers.filter((b) => b.kind === "missing_source");
+    expect(missingSource).toHaveLength(0);
+  });
 });
