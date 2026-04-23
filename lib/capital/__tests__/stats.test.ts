@@ -41,7 +41,7 @@ describe("computeSnapshot", () => {
     expect(snap.tier1Capital).toBe(13_900_000_000);
     expect(snap.totalCapital).toBe(16_400_000_000);
     expect(snap.totalRwa).toBe(93_900_000_000);
-    expect(snap.cet1Ratio).toBeCloseTo(0.132, 3);
+    expect(snap.cet1Ratio).toBeCloseTo(0.13206, 4);
     expect(snap.tier1Ratio).toBeCloseTo(0.148, 4);
     expect(snap.totalRatio).toBeCloseTo(0.1747, 4);
     expect(snap.rwaMismatch).toBeNull();

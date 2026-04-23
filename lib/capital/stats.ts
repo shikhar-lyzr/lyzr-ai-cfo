@@ -80,6 +80,8 @@ export function computeSnapshot(
   let rwaMismatch: RwaMismatch | null = null;
   if (rwaLines.length > 0) {
     const deltaPct = Math.abs(totalRwa - rwaLineTotal) / Math.abs(totalRwa);
+    // Strict `>`: exactly 1% is within tolerance. Documented threshold
+    // means "up to and including 1%" — do not flip to `>=`.
     if (deltaPct > RWA_MISMATCH_THRESHOLD) {
       rwaMismatch = { capitalTotal: totalRwa, rwaLineTotal, deltaPct };
     }
@@ -128,6 +130,18 @@ export type RwaBreakdownRow = {
 // ── DB-backed read helpers. These pull rows for the period and delegate
 //    to the pure functions above. Tested in persist.test.ts via integration.
 
+/**
+ * Read the persisted capital snapshot for a period, with `rwaMismatch`
+ * recomputed fresh from current RwaLine rows.
+ *
+ * **Incomplete signal on its own.** If the user deleted the rwa_breakdown
+ * upload after the snapshot was persisted, this function will return
+ * `rwaMismatch: null` (because there are no RwaLine rows to compare
+ * against), but the snapshot's ratios were computed with an earlier RWA
+ * breakdown that disagreed. Callers should pair this with
+ * getCapitalBreaches(), which emits a `missing_source: rwa_breakdown`
+ * warning when RWA lines are absent for the period.
+ */
 export async function getCapitalSnapshot(
   userId: string,
   periodKey: string,
@@ -237,6 +251,8 @@ export async function getCapitalBreaches(
       const value =
         key === "cet1" ? snap.cet1Ratio : key === "tier1" ? snap.tier1Ratio : snap.totalRatio;
       const minimum = effectiveMinimum(key);
+      // Strict `<`: a ratio exactly at the minimum is compliant, not a breach.
+      // Parity with ratioStatus() in minimums.ts — don't flip this to `<=`.
       if (value < minimum) {
         breaches.push({
           kind: "ratio_breach",
