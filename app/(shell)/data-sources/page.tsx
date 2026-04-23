@@ -245,14 +245,7 @@ function DataSourcesPageInner() {
           />
           {activeTab !== "capital" && (
             <LinkSheetArea
-              shape={
-                activeTab === "reconciliation"
-                  ? "gl"
-                  : // @ts-expect-error - dead code path kept for future re-enablement
-                    activeTab === "capital"
-                    ? "capital_components"
-                    : activeTab
-              }
+              shape={activeTab === "reconciliation" ? "gl" : activeTab}
               onLink={handleLink}
               isLinking={isLinking}
             />
