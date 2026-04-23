@@ -24,7 +24,7 @@ export async function listCapitalPeriods(userId: string): Promise<CapitalPeriodS
   const rows = await prisma.capitalPeriod.findMany({
     where: { userId },
     select: { periodKey: true },
-    orderBy: [{ createdAt: "desc" }, { periodKey: "desc" }],
+    orderBy: [{ periodKey: "desc" }, { createdAt: "desc" }],
   });
   return rows;
 }
