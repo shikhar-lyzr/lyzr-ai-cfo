@@ -356,6 +356,99 @@ const CONTENT_VARIANTS: Variant[] = [
 
 const ALL_VARIANTS: Variant[] = [...HEADER_VARIANTS, ...CONTENT_VARIANTS];
 
+interface Cell {
+  shape: Shape;
+  variantId: string;
+  category: "A" | "B";
+  description: string;
+  outcome: Outcome;
+  detail: string;
+}
+
+function classify(
+  shape: Shape,
+  variant: Variant,
+  mutated: Csv | null,
+  baseline: RunResult,
+): Promise<Cell> | Cell {
+  if (mutated === null) {
+    return {
+      shape,
+      variantId: variant.id,
+      category: variant.category,
+      description: variant.description,
+      outcome: "N/A",
+      detail: "variant not applicable to this shape",
+    };
+  }
+
+  // For Category A we also exercise the shape detector.
+  const needsDetect = variant.category === "A";
+
+  return (async (): Promise<Cell> => {
+    if (needsDetect) {
+      const detected = detectFastPath(mutated.headers);
+      if (detected !== shape) {
+        return {
+          shape,
+          variantId: variant.id,
+          category: variant.category,
+          description: variant.description,
+          outcome: "FAIL_DETECT",
+          detail: `detectFastPath returned '${detected}' (expected '${shape}')`,
+        };
+      }
+    }
+
+    const result = await runShapeOnce(shape, mutated);
+
+    if (result.outcome === "FAIL_PARSE") {
+      return {
+        shape,
+        variantId: variant.id,
+        category: variant.category,
+        description: variant.description,
+        outcome: "FAIL_PARSE",
+        detail: result.error ?? "parser threw",
+      };
+    }
+
+    // Compare against baseline.
+    const sameRowCount = result.rowCount === baseline.rowCount;
+    const sameKey = result.keyField === baseline.keyField;
+    if (sameRowCount && sameKey) {
+      return {
+        shape,
+        variantId: variant.id,
+        category: variant.category,
+        description: variant.description,
+        outcome: "PASS",
+        detail: "",
+      };
+    }
+    return {
+      shape,
+      variantId: variant.id,
+      category: variant.category,
+      description: variant.description,
+      outcome: "PARTIAL",
+      detail: `rowCount ${result.rowCount}/${baseline.rowCount}, key ${result.keyField ?? "(null)"} vs ${baseline.keyField ?? "(null)"}`,
+    };
+  })();
+}
+
+async function runMatrix(baselines: Record<Shape, RunResult>): Promise<Cell[]> {
+  const out: Cell[] = [];
+  for (const shape of SHAPES) {
+    for (const variant of ALL_VARIANTS) {
+      const mutated = variant.apply(shape, BASELINES[shape]);
+      const cell = await classify(shape, variant, mutated, baselines[shape]);
+      out.push(cell);
+    }
+  }
+  return out;
+}
+
 async function main() {
   console.log("=== Baseline verification ===");
   const baselineResults: Record<Shape, RunResult> = {} as Record<Shape, RunResult>;
@@ -370,16 +463,17 @@ async function main() {
   }
   console.log("All baselines PASS.");
 
-  console.log("\n=== Variant preview (first shape: gl) ===");
-  for (const v of ALL_VARIANTS) {
-    const mutated = v.apply("gl", BASELINES.gl);
-    if (mutated === null) {
-      console.log(`  ${v.id} ${v.description}: N/A for gl`);
-    } else {
-      const sampleRow = mutated.rows[0];
-      console.log(`  ${v.id} ${v.description}: row0=[${sampleRow.slice(0, 3).join(", ")}, …]`);
-    }
-  }
+  console.log("\n=== Running matrix ===");
+  const cells = await runMatrix(baselineResults);
+
+  const tally: Record<Outcome, number> = { PASS: 0, PARTIAL: 0, FAIL_DETECT: 0, FAIL_PARSE: 0, "N/A": 0 };
+  for (const c of cells) tally[c.outcome] += 1;
+  console.log(`Total: ${cells.length} cells`);
+  console.log(`  PASS:        ${tally.PASS}`);
+  console.log(`  PARTIAL:     ${tally.PARTIAL}`);
+  console.log(`  FAIL_DETECT: ${tally.FAIL_DETECT}`);
+  console.log(`  FAIL_PARSE:  ${tally.FAIL_PARSE}`);
+  console.log(`  N/A:         ${tally["N/A"]}`);
 }
 
 main().catch((err) => {
