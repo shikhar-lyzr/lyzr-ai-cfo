@@ -80,8 +80,8 @@ function keyFieldFor(shape: Shape, parserOutput: unknown): string | null {
       return res.entries[0]?.reference ?? null;
     }
     if (shape === "fx") {
-      const rates = parserOutput as Array<{ fromCurrency?: string }>;
-      return rates[0]?.fromCurrency ?? null;
+      const res = parserOutput as { rates: Array<{ fromCurrency?: string }> };
+      return res.rates[0]?.fromCurrency ?? null;
     }
   } catch {
     return null;
@@ -93,7 +93,7 @@ function parsedRowCount(shape: Shape, parserOutput: unknown): number {
   if (shape === "variance") return (parserOutput as unknown[]).length;
   if (shape === "ar") return (parserOutput as { invoices: unknown[] }).invoices.length;
   if (shape === "gl" || shape === "sub_ledger") return (parserOutput as { entries: unknown[] }).entries.length;
-  if (shape === "fx") return (parserOutput as unknown[]).length;
+  if (shape === "fx") return (parserOutput as { rates: unknown[] }).rates.length;
   return 0;
 }
 
