@@ -34,7 +34,16 @@ Lyzr AI CFO ships as **AgenticOS** — an operating-system-style UI for financia
 
 The **Command Center** (`/`) is the entry point — a search bar that hands off to the Agent Console with an auto-send query param (`/agent-console?message=...`) plus journey cards and pending-action chips. The **Agent Console** is a three-panel chat workspace that renders the agent's live pipeline (skill discovery, memory load, tool calls, file reads) as a collapsible timeline alongside the streamed response.
 
-Domain journeys (e.g. `/monthly-close`) are fully sample-data driven shells with a docked chat panel that seeds a journey-scoped prompt. They demonstrate the target UX without requiring every workflow to be wired into real data yet.
+Domain journeys (e.g. `/monthly-close`) are either sample-data shells or real data-driven pages. The table below shows which is which today; the rest use a docked chat panel with seeded journey-scoped prompts to demonstrate the target UX.
+
+| Journey | Route | Has real data? |
+|---|---|---|
+| Monthly Close | `/monthly-close` | ✓ |
+| Financial Reconciliation | `/financial-reconciliation` | ✓ |
+| Regulatory Capital | `/regulatory-capital` | ✓ |
+| IFRS 9 ECL | `/ifrs9-ecl` | — (placeholder) |
+| Daily Liquidity | `/daily-liquidity` | — (placeholder) |
+| Regulatory Returns | `/regulatory-returns` | — (placeholder) |
 
 ---
 
@@ -617,6 +626,48 @@ All AR POST operations run inside `prisma.$transaction` to atomically update bot
 - Handles `$` and `,` in amounts
 - Skip reasons: `missing_required_field`, `unparseable_date`, `negative_amount`, `invalid_amount`
 - Upserts `Invoice` rows (idempotent on `dataSourceId + invoiceNumber`)
+
+### Regulatory Capital parsers
+
+Two shapes, auto-detected by `lib/csv/detect-shape.ts`:
+
+- **`capital_components`** — headers include `period`, `component`, `amount`
+  (optionally `currency`). Component values: `cet1_capital`,
+  `additional_tier1`, `tier2`, `goodwill`, `dta`, `other_deduction`,
+  `total_rwa`. Unknown components fall to `other_deduction` with a
+  skipped-row note.
+- **`rwa_breakdown`** — headers include `period`, `risk_type`,
+  `exposure_class`, `exposure_amount`, `risk_weight`, `rwa`. Risk type is
+  `credit` / `market` / `operational`. Risk weight accepts `0.5` or `50%`.
+
+Uploads route through `/api/upload` → `lib/capital/persist.ts` →
+`prisma.$transaction` wrapping `DataSource` + row create + status="ready"
+update → snapshot recompute. The snapshot stores the ratios (`cet1Ratio`,
+`tier1Ratio`, `totalRatio`) plus capital amounts and `totalRwa`, derived
+from `lib/capital/stats.ts`'s pure `computeSnapshot(components, rwaLines)`.
+Minimums live in `lib/capital/minimums.ts` (Basel III Pillar 1) with an
+`effectiveMinimum()` indirection that C-phase buffer logic can extend
+without changing callers.
+
+Full spec: `docs/superpowers/specs/2026-04-23-regulatory-capital-flow-design.md`.
+Full plan: `docs/superpowers/plans/2026-04-23-regulatory-capital-flow.md`.
+
+### CSV robustness
+
+All five parsers (variance, AR, GL, sub-ledger, FX) plus the new capital
+parsers share `lib/csv/utils.ts` helpers for header matching, amount
+parsing (thousands separators, accounting parens for negatives, currency
+prefixes), and date parsing (ISO, US, EU, named-month).
+
+Regression guard: `scripts/audit-csv-parsers.ts` exercises each parser
+against 12 header/content mutations and emits
+`docs/audits/2026-04-23-csv-format-robustness.md`. A round-trip test in
+`tests/csv/parser-robustness.test.ts` runs the audit and asserts the
+outcome distribution.
+
+Current status: **55/56** applicable (shape, variant) pairs pass. The one
+PARTIAL is AR against the accounting-parens variant — intentional: an AR
+invoice amount cannot be negative.
 
 ---
 
