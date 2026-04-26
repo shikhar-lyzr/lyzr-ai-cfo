@@ -50,6 +50,9 @@ scratch/
 # worktrees
 .worktrees/
 .gitagent/
+
+# superpowers brainstorming companion
+.superpowers/
 .claude/*.local.json
 !.claude/settings.example.json
 !.env.example
