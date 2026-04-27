@@ -7,13 +7,13 @@ import { ChevronLeft } from "lucide-react";
 import { MetricCard } from "@/components/shared/metric-card";
 import type { InboxRow } from "./inbox-row";
 import { KindChip, SeverityBadge } from "./badges";
+import { InboxFilterBar } from "./inbox-filter-bar";
 import {
-  InboxFilterBar,
   applyFilters,
   filtersToQueryString,
   ALL_FILTERS,
   type Filters,
-} from "./inbox-filter-bar";
+} from "./inbox-filters";
 
 type Props = { rows: InboxRow[]; initialFilters: Filters };
 

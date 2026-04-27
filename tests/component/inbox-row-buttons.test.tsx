@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DecisionInboxClient } from "@/app/(shell)/decision-inbox/decision-inbox-client";
 import type { InboxRow } from "@/app/(shell)/decision-inbox/inbox-row";
-import { ALL_FILTERS } from "@/app/(shell)/decision-inbox/inbox-filter-bar";
+import { ALL_FILTERS } from "@/app/(shell)/decision-inbox/inbox-filters";
 
 // Mock next/navigation — useRouter().refresh() is called after success.
 vi.mock("next/navigation", () => ({

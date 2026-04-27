@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { InboxFilterBar } from "@/app/(shell)/decision-inbox/inbox-filter-bar";
 import {
-  InboxFilterBar,
   parseFilters,
   filtersToQueryString,
   applyFilters,
   ALL_FILTERS,
   type Filters,
-} from "@/app/(shell)/decision-inbox/inbox-filter-bar";
+} from "@/app/(shell)/decision-inbox/inbox-filters";
 
 describe("parseFilters", () => {
   it("falls back to 'all' for missing or unknown values", () => {

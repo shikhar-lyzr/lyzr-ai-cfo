@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { listDecisions } from "@/lib/decisions/service";
 import { decisionToRow, actionToRow, type InboxRow } from "./inbox-row";
-import { parseFilters } from "./inbox-filter-bar";
+import { parseFilters } from "./inbox-filters";
 import { DecisionInboxClient } from "./decision-inbox-client";
 
 export const dynamic = "force-dynamic";
