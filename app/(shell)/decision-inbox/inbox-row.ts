@@ -8,6 +8,10 @@ export type InboxRowKind =
   | "ar_followup"
   | "reconciliation_break";
 
+export type InboxSeverity = "high" | "medium" | "low";
+
+const SEVERITIES: ReadonlySet<string> = new Set(["high", "medium", "low"]);
+
 export type DecisionWithProposal = Decision & {
   proposal: {
     id: string;
@@ -30,6 +34,7 @@ export type InboxRow = {
   detail: string | null;
   createdAt: Date;
   breakId?: string;
+  severity?: InboxSeverity;
   decision?: DecisionWithProposal;
   action?: ActionWithSource;
 };
@@ -47,6 +52,7 @@ export function decisionToRow(d: DecisionWithProposal): InboxRow {
 }
 
 export function actionToRow(a: ActionWithSource, breakId?: string): InboxRow {
+  const severity = SEVERITIES.has(a.severity) ? (a.severity as InboxSeverity) : undefined;
   return {
     source: "action",
     id: a.id,
@@ -55,6 +61,7 @@ export function actionToRow(a: ActionWithSource, breakId?: string): InboxRow {
     detail: a.detail,
     createdAt: a.createdAt,
     ...(breakId ? { breakId } : {}),
+    ...(severity ? { severity } : {}),
     action: a,
   };
 }

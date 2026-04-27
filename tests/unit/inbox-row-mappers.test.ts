@@ -91,4 +91,39 @@ describe("inbox-row mappers", () => {
     const row = actionToRow(a as any);
     expect(row.breakId).toBeUndefined();
   });
+
+  it("actionToRow includes severity when it is one of high/medium/low", () => {
+    for (const sev of ["high", "medium", "low"] as const) {
+      const a = {
+        id: `a_${sev}`, userId: "u", type: "variance", severity: sev,
+        headline: "h", detail: null, driver: "", status: "pending",
+        sourceDataSourceId: null, invoiceId: null, draftBody: null,
+        createdAt: new Date(),
+      };
+      const row = actionToRow(a as any);
+      expect(row.severity).toBe(sev);
+    }
+  });
+
+  it("actionToRow leaves severity undefined when missing", () => {
+    const a = {
+      id: "a_x", userId: "u", type: "variance", severity: undefined as any,
+      headline: "h", detail: null, driver: "", status: "pending",
+      sourceDataSourceId: null, invoiceId: null, draftBody: null,
+      createdAt: new Date(),
+    };
+    const row = actionToRow(a as any);
+    expect(row.severity).toBeUndefined();
+  });
+
+  it("actionToRow drops unknown severity strings", () => {
+    const a = {
+      id: "a_y", userId: "u", type: "variance", severity: "potato",
+      headline: "h", detail: null, driver: "", status: "pending",
+      sourceDataSourceId: null, invoiceId: null, draftBody: null,
+      createdAt: new Date(),
+    };
+    const row = actionToRow(a as any);
+    expect(row.severity).toBeUndefined();
+  });
 });
