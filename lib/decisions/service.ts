@@ -74,7 +74,7 @@ export async function decideOnProposal(args: DecideArgs): Promise<DecideResult> 
     await prisma.$transaction([
       prisma.decision.update({
         where: { id: dec.id },
-        data: { status: next, decidedBy: null, decidedAt: null, reason: reason ?? null },
+        data: { status: next, reason: reason ?? null },
       }),
       prisma.decisionEvent.create({
         data: {
@@ -177,6 +177,12 @@ export async function decideOnProposal(args: DecideArgs): Promise<DecideResult> 
     }, { timeout: 30_000 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "ALREADY_POSTED") {
+      return { ok: false, code: "post_failed", message: "This proposal was already posted by a concurrent request." };
+    }
+    if (msg === "PROPOSAL_VANISHED") {
+      return { ok: false, code: "post_failed", message: "Proposal not found during posting; it may have been deleted." };
+    }
     return { ok: false, code: "post_failed", message: msg };
   }
 
