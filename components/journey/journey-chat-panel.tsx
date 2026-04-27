@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useChatStream } from "@/hooks/use-chat-stream";
 import { ChatInput } from "@/components/agent-console/chat-input";
-import { NudgeChips } from "./nudge-chips";
+import { SuggestionCards } from "./suggestion-cards";
 import { PipelineContainer } from "@/components/pipeline/pipeline-container";
 import {
   JOURNEY_ASK_AI_EVENT,
@@ -18,11 +18,28 @@ interface JourneyChatPanelProps {
   periodKey?: string;
 }
 
+const STORAGE_KEY = "inbox.chatPanel.expanded";
+
+function readInitialExpanded(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === null) return true;
+    return stored === "true";
+  } catch {
+    return true;
+  }
+}
+
 export function JourneyChatPanel({ journeyId, nudges, periodKey }: JourneyChatPanelProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState<boolean>(readInitialExpanded);
   const [userId, setUserId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastPrefillRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try { window.localStorage.setItem(STORAGE_KEY, String(expanded)); } catch {}
+  }, [expanded]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -32,7 +49,6 @@ export function JourneyChatPanel({ journeyId, nudges, periodKey }: JourneyChatPa
 
   const { messages, pipelineSteps, isStreaming, sendMessage, stopStream } = useChatStream(userId);
 
-  // Refs to keep the event listener stable while accessing latest values.
   const isStreamingRef = useRef(isStreaming);
   const sendMessageRef = useRef(sendMessage);
   const journeyIdRef = useRef(journeyId);
@@ -69,27 +85,51 @@ export function JourneyChatPanel({ journeyId, nudges, periodKey }: JourneyChatPa
     sendMessage(msg, { journeyId, periodKey });
   };
 
-  return (
-    <div className="border-t border-border bg-card">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-        {expanded ? "Collapse chat" : "Ask about this journey..."}
-      </button>
+  if (!expanded) {
+    return (
+      <aside className="w-12 border-l border-border bg-card flex flex-col items-center py-3">
+        <button
+          onClick={() => setExpanded(true)}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Expand chat panel"
+        >
+          <ChevronLeft size={16} />
+        </button>
+      </aside>
+    );
+  }
 
-      {expanded && (
-        <div className="flex flex-col h-[40vh]">
-          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
+  return (
+    <aside className="w-[380px] shrink-0 border-l border-border bg-card flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h2 className="text-sm font-semibold">Ask the agent</h2>
+        <button
+          onClick={() => setExpanded(false)}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Collapse chat panel"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {messages.length === 0 ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Ask anything about this journey. The agent has the data context.
+            </p>
+            <SuggestionCards nudges={nudges} onSelect={handleSend} />
+          </div>
+        ) : (
+          <>
             {messages.map((msg) => (
               <div key={msg.id} className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
                 {msg.role === "user" ? (
-                  <div className="bg-primary text-primary-foreground rounded-xl px-3 py-2 text-xs max-w-[70%]">
+                  <div className="bg-primary text-primary-foreground rounded-xl px-3 py-2 text-xs max-w-[85%]">
                     {msg.content}
                   </div>
                 ) : (
-                  <div className="max-w-[85%]">
+                  <div className="max-w-[95%]">
                     {pipelineSteps.length > 0 && (
                       <div className="mb-1 text-[11px]">
                         <PipelineContainer steps={pipelineSteps} isStreaming={isStreaming} />
@@ -105,22 +145,18 @@ export function JourneyChatPanel({ journeyId, nudges, periodKey }: JourneyChatPa
               </div>
             ))}
             <div ref={messagesEndRef} />
-          </div>
+          </>
+        )}
+      </div>
 
-          {messages.length === 0 && <NudgeChips nudges={nudges} onSelect={handleSend} />}
-
-          <ChatInput
-            onSend={handleSend}
-            onStop={stopStream}
-            isStreaming={isStreaming}
-            placeholder={`Ask about this journey...`}
-          />
-        </div>
-      )}
-
-      {!expanded && (
-        <NudgeChips nudges={nudges.slice(0, 3)} onSelect={handleSend} />
-      )}
-    </div>
+      <div className="border-t border-border">
+        <ChatInput
+          onSend={handleSend}
+          onStop={stopStream}
+          isStreaming={isStreaming}
+          placeholder="Ask about this journey..."
+        />
+      </div>
+    </aside>
   );
 }
