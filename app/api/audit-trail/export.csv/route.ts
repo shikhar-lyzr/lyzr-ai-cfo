@@ -32,6 +32,9 @@ export async function GET(request: NextRequest) {
   });
 
   const warnings = Object.entries(result.errors).map(([s, m]) => `${s} failed: ${m}`);
+  if (result.rows.length === 1000) {
+    warnings.push("export truncated at 1000 rows");
+  }
   const csv = toCsv(result.rows, { warnings });
   return new NextResponse(csv, {
     status: 200,

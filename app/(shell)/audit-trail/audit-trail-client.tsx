@@ -64,7 +64,7 @@ export function AuditTrailClient({ rows, errors, activeSources, activeFrom, acti
           Audit Trail
         </h1>
         <p className="text-sm text-muted-foreground">
-          Every state change recorded across the system
+          User-facing state changes across data, decisions, and runs
         </p>
       </div>
 
@@ -132,7 +132,7 @@ export function AuditTrailClient({ rows, errors, activeSources, activeFrom, acti
                   </div>
                   <div className="flex-1 bg-card border border-border rounded-[var(--radius)] p-4 space-y-2">
                     <div className="flex items-baseline justify-between">
-                      <p className="text-sm font-semibold text-foreground">{row.actorId ?? "system"}</p>
+                      <p className="text-sm font-semibold text-foreground">{row.actorId}</p>
                       <p className="text-xs text-muted-foreground text-right">
                         {new Date(row.timestamp).toLocaleString()}
                       </p>

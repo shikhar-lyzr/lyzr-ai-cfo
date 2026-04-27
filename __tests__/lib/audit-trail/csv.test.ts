@@ -25,10 +25,10 @@ describe("toCsv", () => {
     expect(out).toContain('"with, ""quote"" and\nnewline"');
   });
 
-  it("blank actorId becomes empty cell", () => {
-    const r = { ...row("a", "data_source", "x"), actorId: null };
+  it("actorId is always included in output", () => {
+    const r = row("a", "data_source", "x");
     const out = toCsv([r]);
-    expect(out.split("\n")[1]).toBe("2026-04-15T10:30:00.000Z,data_source,,x,X,ref");
+    expect(out.split("\n")[1]).toBe("2026-04-15T10:30:00.000Z,data_source,u1,x,X,ref");
   });
 
   it("prepends warnings comment lines when given", () => {

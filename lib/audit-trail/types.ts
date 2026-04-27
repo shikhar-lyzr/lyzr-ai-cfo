@@ -4,7 +4,7 @@ export type AuditTimelineRow = {
   id: string;                          // composite: `${source}:${nativeId}`
   source: AuditSource;
   timestamp: string;                   // ISO
-  actorId: string | null;
+  actorId: string;
   summary: string;
   refType: string | null;
   refId: string | null;
