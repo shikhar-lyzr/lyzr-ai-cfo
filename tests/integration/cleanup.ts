@@ -13,6 +13,9 @@ export async function deleteTestUser(userId: string): Promise<void> {
   // MatchRun cascades to MatchLink and Break
   await prisma.matchRun.deleteMany({ where: { userId } });
 
+  // Decisions cascade to DecisionEvent
+  await prisma.decision.deleteMany({ where: { userId } });
+
   // Documents, journals, recon periods (Restrict)
   await prisma.document.deleteMany({ where: { userId } });
   await prisma.journalAdjustment.deleteMany({ where: { userId } });
