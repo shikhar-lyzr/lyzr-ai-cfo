@@ -347,21 +347,39 @@ export function createReconciliationTools(userId: string, periodKey?: string) {
         };
       }
 
-      const prop = await prisma.adjustmentProposal.create({
-        data: {
-          breakId: b.id,
-          proposedBy: "agent",
-          description: args.description,
-          debitAccount: args.debitAccount,
-          creditAccount: args.creditAccount,
-          amount: args.amount,
-          baseAmount: args.amount,
-          currency: b.txnCurrency,
-          journalDate: new Date(),
-          status: "pending",
-        },
+      const { prop, dec } = await prisma.$transaction(async (tx) => {
+        const prop = await tx.adjustmentProposal.create({
+          data: {
+            breakId: b.id,
+            proposedBy: "agent",
+            description: args.description,
+            debitAccount: args.debitAccount,
+            creditAccount: args.creditAccount,
+            amount: args.amount,
+            baseAmount: args.amount,
+            currency: b.txnCurrency,
+            journalDate: new Date(),
+            status: "pending",
+          },
+        });
+        const dec = await tx.decision.create({
+          data: {
+            userId,
+            type: "post_journal",
+            proposalRef: prop.id,
+            refModel: "AdjustmentProposal",
+            headline: `Post ${prop.amount.toFixed(2)} ${prop.currency} — ${args.description}`,
+            detail: `Break ${b.id} (${b.side})`,
+            status: "pending",
+          },
+        });
+        return { prop, dec };
       });
-      return { text: `Proposal ${prop.id} pending. Ask user to approve before posting.`, details: { proposalId: prop.id, proposal: prop } };
+
+      return {
+        text: `Proposal ${prop.id} pending review (decision ${dec.id}). User must approve via Decision Inbox before posting.`,
+        details: { proposalId: prop.id, decisionId: dec.id, proposal: prop },
+      };
     }
   );
 
