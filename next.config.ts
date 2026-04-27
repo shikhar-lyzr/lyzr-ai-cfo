@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/**/*": ["./agent/**/*"],
   },
+  turbopack: {
+    root: process.cwd(),
+  },
 };
 
 export default nextConfig;
