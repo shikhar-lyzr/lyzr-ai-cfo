@@ -29,6 +29,7 @@ export type InboxRow = {
   headline: string;
   detail: string | null;
   createdAt: Date;
+  breakId?: string;
   decision?: DecisionWithProposal;
   action?: ActionWithSource;
 };
@@ -45,7 +46,7 @@ export function decisionToRow(d: DecisionWithProposal): InboxRow {
   };
 }
 
-export function actionToRow(a: ActionWithSource): InboxRow {
+export function actionToRow(a: ActionWithSource, breakId?: string): InboxRow {
   return {
     source: "action",
     id: a.id,
@@ -53,6 +54,7 @@ export function actionToRow(a: ActionWithSource): InboxRow {
     headline: a.headline,
     detail: a.detail,
     createdAt: a.createdAt,
+    ...(breakId ? { breakId } : {}),
     action: a,
   };
 }

@@ -25,10 +25,25 @@ export default async function DecisionInboxPage() {
     sourceName: a.dataSource?.name ?? null,
   }));
 
+  const reconBreakActionIds = pendingActions
+    .filter((a) => a.type === "reconciliation_break")
+    .map((a) => a.id);
+
+  const breakRows = reconBreakActionIds.length === 0
+    ? []
+    : await prisma.break.findMany({
+        where: { actionId: { in: reconBreakActionIds } },
+        select: { id: true, actionId: true },
+      });
+
+  const breakIdByActionId = new Map(
+    breakRows.filter((b) => b.actionId).map((b) => [b.actionId as string, b.id]),
+  );
+
   const rows: InboxRow[] = (
     [
       ...pendingDecisions.map((d) => decisionToRow(d as any)),
-      ...pendingActions.map(actionToRow),
+      ...pendingActions.map((a) => actionToRow(a, breakIdByActionId.get(a.id))),
     ] as InboxRow[]
   ).sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime());
 

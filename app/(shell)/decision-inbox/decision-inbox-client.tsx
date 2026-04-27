@@ -13,7 +13,10 @@ export function DecisionInboxClient({ rows }: Props) {
   const [selected, setSelected] = useState<InboxRow | null>(null);
   const [reason, setReason] = useState("");
   const [busy, startTransition] = useTransition();
+  const [dispatching, setDispatching] = useState<string | null>(null);
   const router = useRouter();
+
+  const isBusy = dispatching !== null || busy;
 
   function back() {
     setSelected(null);
@@ -31,30 +34,48 @@ export function DecisionInboxClient({ rows }: Props) {
   }
 
   async function dispatchDecision(id: string, outcome: "approve" | "reject" | "needs_info") {
-    const ok = await call(`/api/decisions/${id}/decide`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ outcome, reason: reason.trim() || undefined }),
-    });
-    if (ok) { back(); startTransition(() => router.refresh()); }
+    if (dispatching) return;
+    setDispatching(id);
+    try {
+      const ok = await call(`/api/decisions/${id}/decide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome, reason: reason.trim() || undefined }),
+      });
+      if (ok) { back(); startTransition(() => router.refresh()); }
+    } finally {
+      setDispatching(null);
+    }
   }
 
   async function dispatchActionPatch(id: string, status: "approved" | "dismissed") {
-    const ok = await call(`/api/actions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    if (ok) { back(); startTransition(() => router.refresh()); }
+    if (dispatching) return;
+    setDispatching(id);
+    try {
+      const ok = await call(`/api/actions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (ok) { back(); startTransition(() => router.refresh()); }
+    } finally {
+      setDispatching(null);
+    }
   }
 
   async function dispatchAr(id: string, op: "mark_sent" | "snooze" | "escalate", days?: number) {
-    const ok = await call(`/api/actions/${id}/ar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op, ...(days != null ? { days } : {}) }),
-    });
-    if (ok) { back(); startTransition(() => router.refresh()); }
+    if (dispatching) return;
+    setDispatching(id);
+    try {
+      const ok = await call(`/api/actions/${id}/ar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op, ...(days != null ? { days } : {}) }),
+      });
+      if (ok) { back(); startTransition(() => router.refresh()); }
+    } finally {
+      setDispatching(null);
+    }
   }
 
   if (selected) {
@@ -62,7 +83,7 @@ export function DecisionInboxClient({ rows }: Props) {
       row={selected}
       reason={reason}
       setReason={setReason}
-      busy={busy}
+      busy={isBusy}
       onBack={back}
       onDecision={dispatchDecision}
       onActionPatch={dispatchActionPatch}
@@ -270,12 +291,12 @@ function ButtonRow({
     );
   }
   if (row.kind === "reconciliation_break") {
+    const href = row.breakId
+      ? `/financial-reconciliation?breakId=${row.breakId}`
+      : `/financial-reconciliation`;
     return (
       <div className="flex gap-3">
-        <Link
-          href={`/financial-reconciliation?breakId=${row.id}`}
-          className={primary}
-        >
+        <Link href={href} className={primary}>
           Investigate
         </Link>
         <button disabled={busy} onClick={() => onActionPatch(row.id, "dismissed")} className={neutral}>Dismiss</button>

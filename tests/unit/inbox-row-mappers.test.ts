@@ -68,4 +68,27 @@ describe("inbox-row mappers", () => {
       expect(row.kind).toBe(t);
     }
   });
+
+  it("actionToRow attaches breakId when provided", () => {
+    const a = {
+      id: "act_rb", userId: "u", type: "reconciliation_break", severity: "high",
+      headline: "Unresolved break", detail: "Break #b_42.", driver: "reconciliation",
+      status: "pending", sourceDataSourceId: null, invoiceId: null, draftBody: null,
+      createdAt: new Date(),
+    };
+    const row = actionToRow(a as any, "b_42");
+    expect(row.breakId).toBe("b_42");
+    expect(row.kind).toBe("reconciliation_break");
+  });
+
+  it("actionToRow leaves breakId undefined when no second arg", () => {
+    const a = {
+      id: "act_v", userId: "u", type: "variance", severity: "low",
+      headline: "h", detail: null, driver: "", status: "pending",
+      sourceDataSourceId: null, invoiceId: null, draftBody: null,
+      createdAt: new Date(),
+    };
+    const row = actionToRow(a as any);
+    expect(row.breakId).toBeUndefined();
+  });
 });
