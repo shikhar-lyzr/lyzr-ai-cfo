@@ -89,9 +89,9 @@ describe("applyFilters", () => {
 });
 
 describe("InboxFilterBar (interactions)", () => {
-  let onChange: ReturnType<typeof vi.fn>;
+  let onChange: ReturnType<typeof vi.fn<(next: Filters) => void>>;
 
-  beforeEach(() => { onChange = vi.fn(); });
+  beforeEach(() => { onChange = vi.fn<(next: Filters) => void>(); });
   afterEach(() => { vi.restoreAllMocks(); });
 
   it("clicking a kind pill calls onChange with that kind", () => {
