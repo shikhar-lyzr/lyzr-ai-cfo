@@ -6,6 +6,7 @@ import {
   reAgeOpenBreaks,
 } from "@/lib/reconciliation/persist";
 import { DEFAULT_STRATEGY_CONFIG } from "@/lib/reconciliation/types";
+import { decideOnProposal } from "@/lib/decisions/service";
 
 export function createReconciliationTools(userId: string, periodKey?: string) {
   const searchLedgerEntries = tool(
@@ -410,51 +411,32 @@ export function createReconciliationTools(userId: string, periodKey?: string) {
         };
       }
 
-      try {
-        const result = await prisma.$transaction(async (tx) => {
-          // Conditional guard: only proceed if still pending. If a concurrent call
-          // already flipped it, updateMany returns count=0 and we bail.
-          const claimed = await tx.adjustmentProposal.updateMany({
-            where: { id: p.id, status: "pending" },
-            data: {
-              status: "posted",
-              approvedBy: userId,
-              approvedAt: new Date(),
-            },
-          });
-          if (claimed.count === 0) {
-            throw new Error("ALREADY_POSTED");
-          }
-
-          const journal = await tx.journalAdjustment.create({
-            data: {
-              userId,
-              proposalId: p.id,
-              entryDate: new Date(),
-              lines: [
-                { account: p.debitAccount, dr: p.amount, cr: 0, baseAmount: p.baseAmount },
-                { account: p.creditAccount, dr: 0, cr: p.amount, baseAmount: p.baseAmount },
-              ],
-            },
-          });
-          await tx.adjustmentProposal.update({
-            where: { id: p.id },
-            data: { postedJournalId: journal.id },
-          });
-          await tx.break.update({
-            where: { id: p.breakId },
-            data: { status: "adjusted" },
-          });
-          return journal.id;
-        }, { timeout: 30_000 });
-
-        return { text: `Posted journal ${result}. Break flipped to adjusted.`, details: { journalId: result } };
-      } catch (err) {
-        if (err instanceof Error && err.message === "ALREADY_POSTED") {
-          return { text: `Proposal was posted by a concurrent request. No duplicate journal created.`, details: {} };
-        }
-        throw err;
+      // Look up the linked Decision so we route through the service layer.
+      const dec = await prisma.decision.findFirst({
+        where: { userId, type: "post_journal", proposalRef: p.id, status: { in: ["pending", "needs_info"] } },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!dec) {
+        return {
+          text: `Proposal ${p.id} has no pending Decision. The user must approve via the Decision Inbox.`,
+          details: { proposalId: p.id },
+        };
       }
+
+      const result = await decideOnProposal({
+        userId,
+        decisionId: dec.id,
+        outcome: "approve",
+        reason: "Approved via agent confirm:true",
+      });
+
+      if (!result.ok) {
+        return { text: `Approval failed: ${result.message}`, details: { code: result.code } };
+      }
+      return {
+        text: `Posted journal for proposal ${p.id}. Break flipped to adjusted.`,
+        details: { decisionId: dec.id, proposalId: p.id },
+      };
     }
   );
 
