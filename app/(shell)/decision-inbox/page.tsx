@@ -3,13 +3,26 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { listDecisions } from "@/lib/decisions/service";
 import { decisionToRow, actionToRow, type InboxRow } from "./inbox-row";
+import { parseFilters } from "./inbox-filter-bar";
 import { DecisionInboxClient } from "./decision-inbox-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function DecisionInboxPage() {
+export default async function DecisionInboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  const sp = await searchParams;
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const initialFilters = parseFilters({
+    kind: first(sp.kind),
+    severity: first(sp.severity),
+    age: first(sp.age),
+  });
 
   const [pendingDecisions, pendingActionsRaw] = await Promise.all([
     listDecisions(session.userId, "pending"),
@@ -47,5 +60,5 @@ export default async function DecisionInboxPage() {
     ] as InboxRow[]
   ).sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime());
 
-  return <DecisionInboxClient rows={rows} />;
+  return <DecisionInboxClient rows={rows} initialFilters={initialFilters} />;
 }

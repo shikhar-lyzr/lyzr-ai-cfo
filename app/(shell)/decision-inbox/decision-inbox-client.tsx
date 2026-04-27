@@ -1,22 +1,46 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { MetricCard } from "@/components/shared/metric-card";
 import type { InboxRow } from "./inbox-row";
+import { KindChip, SeverityBadge } from "./badges";
+import {
+  InboxFilterBar,
+  applyFilters,
+  filtersToQueryString,
+  ALL_FILTERS,
+  type Filters,
+} from "./inbox-filter-bar";
 
-type Props = { rows: InboxRow[] };
+type Props = { rows: InboxRow[]; initialFilters: Filters };
 
-export function DecisionInboxClient({ rows }: Props) {
+export function DecisionInboxClient({ rows, initialFilters }: Props) {
   const [selected, setSelected] = useState<InboxRow | null>(null);
   const [reason, setReason] = useState("");
   const [busy, startTransition] = useTransition();
   const [dispatching, setDispatching] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>(initialFilters);
   const router = useRouter();
 
   const isBusy = dispatching !== null || busy;
+
+  const visibleRows = useMemo(
+    () => applyFilters(rows, filters, Date.now()) as InboxRow[],
+    [rows, filters],
+  );
+
+  function setFiltersAndUrl(next: Filters) {
+    setFilters(next);
+    const qs = filtersToQueryString(next);
+    router.replace(`/decision-inbox${qs}`);
+  }
+
+  function clearFilters() {
+    setFiltersAndUrl(ALL_FILTERS);
+  }
 
   function back() {
     setSelected(null);
@@ -91,6 +115,9 @@ export function DecisionInboxClient({ rows }: Props) {
     />;
   }
 
+  const noPendingAtAll = rows.length === 0;
+  const filteredEmpty = !noPendingAtAll && visibleRows.length === 0;
+
   return (
     <div className="space-y-8">
       <div className="space-y-2">
@@ -107,28 +134,37 @@ export function DecisionInboxClient({ rows }: Props) {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <MetricCard value={rows.length} label="Pending" />
+        <MetricCard value={visibleRows.length} label="Pending" />
       </div>
 
-      {rows.length === 0 ? (
+      <InboxFilterBar filters={filters} onChange={setFiltersAndUrl} />
+
+      {noPendingAtAll ? (
         <div className="text-center py-16 text-sm text-muted-foreground">
           Nothing waiting on you. The agent will queue items here when it needs your call.
         </div>
+      ) : filteredEmpty ? (
+        <div className="text-center py-16 text-sm text-muted-foreground">
+          No items match these filters.{" "}
+          <button onClick={clearFilters} className="underline">Clear filters</button>
+        </div>
       ) : (
         <div className="space-y-3">
-          {rows.map((r) => (
+          {visibleRows.map((r) => (
             <button
               key={`${r.source}_${r.id}`}
               onClick={() => setSelected(r)}
               className="w-full text-left border border-border rounded-lg p-4 bg-card hover:bg-accent transition-colors"
             >
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-base mb-1">{r.headline}</h3>
-                {r.detail && <p className="text-xs text-muted-foreground mb-2">{r.detail}</p>}
-                <p className="text-xs text-muted-foreground">
-                  {new Date(r.createdAt).toLocaleString()} · {r.kind}
-                </p>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <KindChip kind={r.kind} />
+                {r.severity && <SeverityBadge severity={r.severity} />}
+                <h3 className="font-semibold text-base">{r.headline}</h3>
               </div>
+              {r.detail && <p className="text-xs text-muted-foreground mb-2 ml-1">{r.detail}</p>}
+              <p className="text-xs text-muted-foreground ml-1">
+                {new Date(r.createdAt).toLocaleString()}
+              </p>
             </button>
           ))}
         </div>
@@ -159,10 +195,14 @@ function DetailView({
       </button>
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">{row.headline}</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <KindChip kind={row.kind} />
+          {row.severity && <SeverityBadge severity={row.severity} />}
+          <h1 className="text-2xl font-semibold">{row.headline}</h1>
+        </div>
         {row.detail && <p className="text-sm text-muted-foreground">{row.detail}</p>}
         <p className="text-xs text-muted-foreground">
-          Filed {new Date(row.createdAt).toLocaleString()} · {row.kind}
+          Filed {new Date(row.createdAt).toLocaleString()}
         </p>
       </div>
 

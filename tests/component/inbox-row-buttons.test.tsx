@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DecisionInboxClient } from "@/app/(shell)/decision-inbox/decision-inbox-client";
 import type { InboxRow } from "@/app/(shell)/decision-inbox/inbox-row";
+import { ALL_FILTERS } from "@/app/(shell)/decision-inbox/inbox-filter-bar";
 
 // Mock next/navigation — useRouter().refresh() is called after success.
 vi.mock("next/navigation", () => ({
@@ -37,7 +38,7 @@ function openRow() {
 
 describe("inbox dispatch table", () => {
   it("variance Approve → PATCH /api/actions/{id} with approved", async () => {
-    render(<DecisionInboxClient rows={[row({ source: "action", kind: "variance", id: "act_v" })]} />);
+    render(<DecisionInboxClient initialFilters={ALL_FILTERS} rows={[row({ source: "action", kind: "variance", id: "act_v" })]} />);
     openRow();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -50,7 +51,7 @@ describe("inbox dispatch table", () => {
   });
 
   it("anomaly Acknowledge → PATCH approved", async () => {
-    render(<DecisionInboxClient rows={[row({ source: "action", kind: "anomaly", id: "act_a" })]} />);
+    render(<DecisionInboxClient initialFilters={ALL_FILTERS} rows={[row({ source: "action", kind: "anomaly", id: "act_a" })]} />);
     openRow();
     fireEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -63,7 +64,7 @@ describe("inbox dispatch table", () => {
   });
 
   it("recommendation Dismiss → PATCH dismissed", async () => {
-    render(<DecisionInboxClient rows={[row({ source: "action", kind: "recommendation", id: "act_r" })]} />);
+    render(<DecisionInboxClient initialFilters={ALL_FILTERS} rows={[row({ source: "action", kind: "recommendation", id: "act_r" })]} />);
     openRow();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -76,7 +77,7 @@ describe("inbox dispatch table", () => {
   });
 
   it("ar_followup Mark Sent → POST /api/actions/{id}/ar with mark_sent", async () => {
-    render(<DecisionInboxClient rows={[row({ source: "action", kind: "ar_followup", id: "act_ar" })]} />);
+    render(<DecisionInboxClient initialFilters={ALL_FILTERS} rows={[row({ source: "action", kind: "ar_followup", id: "act_ar" })]} />);
     openRow();
     // ArDraftBlock fires its own GET on mount — clear so we can assert on the POST cleanly.
     fetchMock.mockClear();
@@ -91,7 +92,7 @@ describe("inbox dispatch table", () => {
   });
 
   it("ar_followup Snooze → POST with snooze + days:7", async () => {
-    render(<DecisionInboxClient rows={[row({ source: "action", kind: "ar_followup", id: "act_ar2" })]} />);
+    render(<DecisionInboxClient initialFilters={ALL_FILTERS} rows={[row({ source: "action", kind: "ar_followup", id: "act_ar2" })]} />);
     openRow();
     fetchMock.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Snooze 7d" }));
@@ -107,6 +108,7 @@ describe("inbox dispatch table", () => {
   it("recon_break Investigate is a Link with the breakId-resolved href, no fetch", () => {
     render(
       <DecisionInboxClient
+        initialFilters={ALL_FILTERS}
         rows={[row({ source: "action", kind: "reconciliation_break", id: "act_rb", breakId: "brk_42" })]}
       />,
     );
@@ -120,6 +122,7 @@ describe("inbox dispatch table", () => {
   it("recon_break Investigate falls back to bare /financial-reconciliation when breakId is absent", () => {
     render(
       <DecisionInboxClient
+        initialFilters={ALL_FILTERS}
         rows={[row({ source: "action", kind: "reconciliation_break", id: "act_rb2" })]}
       />,
     );
@@ -129,7 +132,7 @@ describe("inbox dispatch table", () => {
   });
 
   it("decision Approve → POST /api/decisions/{id}/decide with approve", async () => {
-    render(<DecisionInboxClient rows={[row({ source: "decision", kind: "post_journal", id: "dec_1" })]} />);
+    render(<DecisionInboxClient initialFilters={ALL_FILTERS} rows={[row({ source: "decision", kind: "post_journal", id: "dec_1" })]} />);
     openRow();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     // No reason filled in → body should not include `reason`
