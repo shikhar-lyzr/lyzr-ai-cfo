@@ -17,6 +17,9 @@ describe("legalTransition", () => {
   it("needs_info + reject → rejected", () => {
     expect(legalTransition("needs_info", "reject")).toBe("rejected");
   });
+  it("needs_info + needs_info → null (no self-transition)", () => {
+    expect(legalTransition("needs_info", "needs_info")).toBeNull();
+  });
   it("approved + approve → null (terminal)", () => {
     expect(legalTransition("approved", "approve")).toBeNull();
   });
