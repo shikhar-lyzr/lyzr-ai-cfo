@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { getReconciliationStats, getTopBreaks } from "@/lib/reconciliation/stats";
 import { PeriodPicker } from "./period-picker";
 import { AskAiButton } from "./ask-ai-button";
+import { HighlightOnMount } from "./highlight-on-mount";
 
 type TopBreak = Awaited<ReturnType<typeof getTopBreaks>>[number];
 
@@ -27,9 +28,9 @@ const JOURNEY_PROPS = {
 export default async function FinancialReconciliationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; breakId?: string }>;
 }) {
-  const { period } = await searchParams;
+  const { period, breakId } = await searchParams;
   const session = await getSession();
   const userId = session?.userId ?? null;
 
@@ -174,7 +175,7 @@ export default async function FinancialReconciliationPage({
           </thead>
           <tbody>
             {topBreaks.map((b) => (
-              <tr key={b.id} className="border-b border-border last:border-b-0 hover:bg-secondary/30">
+              <tr key={b.id} id={`break-${b.id}`} className="border-b border-border last:border-b-0 hover:bg-secondary/30 transition-shadow">
                 <td className="px-4 py-2.5 font-mono text-xs">{b.ref}</td>
                 <td className="px-4 py-2.5 font-semibold">
                   ${Math.abs(b.amount).toLocaleString()} {b.currency}
@@ -195,6 +196,7 @@ export default async function FinancialReconciliationPage({
           </tbody>
         </table>
       </div>
+      <HighlightOnMount targetId={breakId ? `break-${breakId}` : null} />
     </JourneyPage>
   );
 }
