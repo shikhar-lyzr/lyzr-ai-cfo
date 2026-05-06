@@ -252,9 +252,9 @@ interface ActionModalProps {
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ [Backdrop: bg-black/40 backdrop-blur-[2px]]             │
-│                                                          │
+│                                                         │
 │  ┌────────────────────────────────────────────────────┐ │
-│  │ [Severity Badge] [Close Button]                   │ │  (Header)
+│  │ [Severity Badge] [Close Button]                    │ │  (Header)
 │  ├────────────────────────────────────────────────────┤ │
 │  │ # Headline                                         │ │  (flex-1 overflow-y-auto)
 │  │ Detail text...                                     │ │
@@ -263,9 +263,9 @@ interface ActionModalProps {
 │  │                                                    │ │
 │  │ Source: [name] [time ago]                          │ │
 │  │                                                    │ │
-│  │ [AR Draft Body in <pre>] (if ar_followup)         │ │
+│  │ [AR Draft Body in <pre>] (if ar_followup)          │ │
 │  │                                                    │ │
-│  │ [History toggle] (if status !== pending)          │ │
+│  │ [History toggle] (if status !== pending)           │ │
 │  │ History timeline...                                │ │
 │  ├────────────────────────────────────────────────────┤ │
 │  │ [Action Buttons] ────────────────────────────────  │ │  (Footer)
