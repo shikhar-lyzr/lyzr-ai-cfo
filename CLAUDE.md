@@ -3,6 +3,10 @@
 <!-- DIRECTIVES (priority over defaults) -->
 @AGENTS.md
 
+<!-- PORTABLE PROJECT MEMORY (committed snapshot, mirrors auto-memory) -->
+<!-- Individual memory files live in .claude-context/memory/ — read on demand -->
+@.claude-context/memory/MEMORY.md
+
 **Skills discipline:** Invoke the matching superpower skill BEFORE acting on any non-trivial task — including under time pressure, including when the fix seems obvious. Common triggers: `brainstorming` for new work, `systematic-debugging` for any bug, `test-driven-development` for new features/fixes, `writing-plans` after brainstorm, `subagent-driven-development` for plan execution, `verification-before-completion` before claiming done. Skills override default behavior. See `feedback_use_superpowers.md` + `feedback_superpowers_discipline.md` in memory for rationale.
 
 Stack: Next.js 16 App Router + Prisma + Neon Postgres + gitclaw SDK.

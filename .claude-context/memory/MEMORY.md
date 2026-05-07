@@ -1,0 +1,13 @@
+- [Lyzr AI CFO demo project state](project_lyzr_cfo_demo.md) — three journeys live (close/recon/capital), three placeholders, gitclaw-based agent, CSV 55/56
+- [Okra AI CMO target product reference](reference_okra_ai_cmo.md) — target shape: rent-an-AI-exec running daily, actions feed primary, chat secondary, documents section
+- [Windows bash gotchas](feedback_windows_gotchas.md) — TaskStop leaves node alive; use `taskkill //PID //F`; Next only reads .env at startup
+- [gitclaw SDK identity and constraints](reference_gitclaw_sdk.md) — open-gitagent/gitclaw not zavora-ai; supported providers; Turbopack config requirements
+- [Debug systemically, not reactively](feedback_systemic_debugging.md) — map full path, curl external deps in isolation BEFORE editing code; fix error-path swallowing alongside the root cause
+- [Always use superpowers skills](feedback_use_superpowers.md) — brainstorm, debug, TDD, plan, review in every session; no ad-hoc implementation
+- [Superpowers discipline under pressure](feedback_superpowers_discipline.md) — invoke systematic-debugging FIRST, not after multiple failed patches; brainstorm before rewrites
+- [Parallel-branch workflows](feedback_parallel_branch_workflows.md) — two sessions on same branch: subagents mis-reconcile main drift; use --no-ff not squash; confirm merge strategy before executing
+- [tsx in worktrees → parent node_modules](feedback_worktree_tsx_resolution.md) — cd into worktree before running tsx scripts that touch new schema; resolver uses parent's Prisma client otherwise
+- [Turbopack root in worktrees](feedback_turbopack_root_in_worktrees.md) — pin `turbopack: { root: process.cwd() }` in next.config.ts; otherwise .env loads from C:\Users\shikh\ and process.env AI keys are undefined
+- [Node orphans after dev-kill cycles](feedback_node_orphans_after_dev_kills.md) — repeated taskkill /F on Next dev leaves hundreds of 2-MB node ghosts; vitest workers start "failing"; sweep with `Get-Process node | Where WorkingSet/1MB -lt 10 | Stop-Process -Force`
+- [Phase 1 Make Observe Honest merged](project_phase1_honest_observe_done.md) — 2026-04-27 commit 041ce17; Decision/DecisionEvent + audit columns; Phase 2 (recon UI) & Phase 3 (AR) still deferred
+- [Unified Inbox brainstorm — spec written](project_unified_inbox_brainstorm_inflight.md) — Path B, all Qs locked, spec at docs/superpowers/specs/2026-04-27-unified-decision-inbox-design.md (745cb5b); awaiting user review then writing-plans
